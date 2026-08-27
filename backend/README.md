@@ -41,6 +41,22 @@ docker compose up -d sqlserver redis
 dotnet run --project src/CarDealer.Api
 ```
 
+**Both dependencies must be running.** Unlike `docker compose up`, which injects connection
+strings as environment variables, this path reads them from `appsettings.Development.json` —
+which points `Redis` at `localhost:6379`, the port compose publishes.
+
+Confirm the cache is actually backed by Redis rather than the development fallback:
+
+```bash
+curl -X POST 'http://localhost:5080/api/v1/diagnostics/cache-roundtrip?key=k&value=v' \
+  -H "Authorization: Bearer <access token>"
+```
+
+`"implementation"` must read **`DistributedCacheService`**. If it reads
+`InMemoryCacheService`, no Redis connection string was resolved and the cache is per-process
+and non-shared — fine for a quick local run, but it means the Redis path is not being
+exercised at all (acceptance criteria H1, H2).
+
 ## Logging in
 
 Every seeded account uses the password **`Dev_Passw0rd!`**. These accounts are created only
@@ -76,7 +92,7 @@ overrides `ConnectionStrings:Default`.
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `ConnectionStrings__Default` | yes | SQL Server connection string |
-| `ConnectionStrings__Redis` | outside Development | Redis connection. **Absent outside Development is a startup failure** — the in-memory fallback is development-only, and silently degrading in production would look healthy while losing every cache entry per instance |
+| `ConnectionStrings__Redis` | outside Development | Redis connection. **Absent outside Development is a startup failure** — the in-memory fallback is development-only, and silently degrading in production would look healthy while losing every cache entry per instance. In Development an absent *or empty* value selects the in-memory cache silently, so `appsettings.Development.json` sets `localhost:6379` to keep the local run on the same code path as every other environment |
 | `Jwt__SigningKey` | yes | Token signing key, minimum 32 characters. Never commit it |
 | `Jwt__Issuer` / `Jwt__Audience` | no | Default to `cardealer-api` / `cardealer-client` |
 | `Jwt__AccessTokenMinutes` | no | Default 15 |
@@ -162,6 +178,17 @@ tests/
 
 **API exits at startup with `No Redis connection string is configured`** — expected outside
 Development. Set `ConnectionStrings__Redis`.
+
+**`RedisConnectionException: UnableToConnect on localhost:6379`** — Redis is not running, and
+in Development the API now points at it rather than silently falling back. Start it with
+`docker compose up -d redis`, or `redis-server --port 6379` if you have Redis installed
+locally. Only cache calls fail; the rest of the API is unaffected, because nothing caches at
+startup.
+
+**`cache-roundtrip` reports `InMemoryCacheService`** — no Redis connection string resolved.
+Under `docker compose up` check that the `redis` service is healthy; running from the CLI,
+check that `ConnectionStrings:Redis` in `appsettings.Development.json` is non-empty and that
+no `ConnectionStrings__Redis=` environment variable is overriding it with a blank value.
 
 **`OptionsValidationException` for `JwtOptions`** — `Jwt__SigningKey` is missing or shorter
 than 32 characters.
