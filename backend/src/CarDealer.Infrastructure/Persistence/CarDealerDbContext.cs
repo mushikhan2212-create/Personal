@@ -38,6 +38,39 @@ public class CarDealerDbContext : DbContext
 
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
+    // --- Phase 0.5 catalog ---------------------------------------------------------------
+
+    public DbSet<VehicleSource> VehicleSources => Set<VehicleSource>();
+
+    public DbSet<VehicleSourceConfiguration> VehicleSourceConfigurations
+        => Set<VehicleSourceConfiguration>();
+
+    public DbSet<Vehicle> Vehicles => Set<Vehicle>();
+
+    public DbSet<VehicleListing> VehicleListings => Set<VehicleListing>();
+
+    public DbSet<VehicleImage> VehicleImages => Set<VehicleImage>();
+
+    public DbSet<VehicleListingImage> VehicleListingImages => Set<VehicleListingImage>();
+
+    public DbSet<TenantVehicle> TenantVehicles => Set<TenantVehicle>();
+
+    public DbSet<VehicleMatchCandidate> VehicleMatchCandidates => Set<VehicleMatchCandidate>();
+
+    public DbSet<VehicleMergeHistory> VehicleMergeHistories => Set<VehicleMergeHistory>();
+
+    public DbSet<Make> Makes => Set<Make>();
+
+    public DbSet<Model> Models => Set<Model>();
+
+    public DbSet<SourceMakeModelAlias> SourceMakeModelAliases => Set<SourceMakeModelAlias>();
+
+    public DbSet<ExchangeRate> ExchangeRates => Set<ExchangeRate>();
+
+    public DbSet<SyncJob> SyncJobs => Set<SyncJob>();
+
+    public DbSet<SyncJobItem> SyncJobItems => Set<SyncJobItem>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -88,16 +121,102 @@ public class CarDealerDbContext : DbContext
         modelBuilder.Entity<RolePermission>()
             .HasQueryFilter(e =>
                 e.Role.TenantId == null || e.Role.TenantId == _tenantContext.TenantIdOrZero);
+
+        // --- Phase 0.5 catalog (decision D1) ---------------------------------------------
+        //
+        // Null TenantId means the global catalog and is readable by every tenant; non-null is
+        // one tenant's private inventory. This is a weaker guard than flat equality, because
+        // a read filter that permits null also permits UPDATE and DELETE against those same
+        // global rows. GuardGlobalCatalogWrites below is what closes that gap
+        // (docs/spec/04-schema-delta.md section 1.4, case 3).
+        modelBuilder.Entity<Vehicle>()
+            .HasQueryFilter(e => e.TenantId == null || e.TenantId == _tenantContext.TenantIdOrZero);
+
+        modelBuilder.Entity<VehicleListing>()
+            .HasQueryFilter(e => e.TenantId == null || e.TenantId == _tenantContext.TenantIdOrZero);
+
+        modelBuilder.Entity<VehicleImage>()
+            .HasQueryFilter(e => e.TenantId == null || e.TenantId == _tenantContext.TenantIdOrZero);
+
+        // The overlay is strictly tenant-owned - it is the table that holds one tenant's
+        // price and notes over a shared car, so it never admits the null-is-global rule.
+        modelBuilder.Entity<TenantVehicle>()
+            .HasQueryFilter(e => e.TenantId == _tenantContext.TenantIdOrZero);
+
+        // Sources may be shared (SQL schema spec section 3); their configurations, which
+        // carry the credential reference, never are.
+        modelBuilder.Entity<VehicleSource>()
+            .HasQueryFilter(e => e.TenantId == null || e.TenantId == _tenantContext.TenantIdOrZero);
+
+        modelBuilder.Entity<VehicleSourceConfiguration>()
+            .HasQueryFilter(e => e.TenantId == _tenantContext.TenantIdOrZero);
+    }
+
+    /// <summary>
+    /// Refuses to create, modify or delete a global catalog row from a tenant-scoped request
+    /// path (docs/spec/04-schema-delta.md section 1.4, case 3).
+    /// </summary>
+    /// <remarks>
+    /// The query filter deliberately lets every tenant READ global rows - that is the point
+    /// of decision D1. It does not stop them writing to those rows, and a read filter is
+    /// often mistaken for a write guard. Without this, any tenant could edit the price of a
+    /// car in the shared catalog and change it for everyone.
+    ///
+    /// The rule is simply: if a tenant is resolved, that tenant may only touch its own rows.
+    /// Sync jobs populate the global catalog from a background context where no tenant is
+    /// resolved, so TenantIdOrZero is zero and this guard does not apply to them. That is the
+    /// intended and only route to a global write.
+    /// </remarks>
+    private void GuardGlobalCatalogWrites()
+    {
+        var tenantId = _tenantContext.TenantIdOrZero;
+
+        if (tenantId == 0)
+        {
+            // No tenant resolved: a system or sync path. Global writes are its job.
+            return;
+        }
+
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            if (entry.Entity is not IOptionallyTenantScoped scoped)
+            {
+                continue;
+            }
+
+            if (entry.State is not (EntityState.Added or EntityState.Modified or EntityState.Deleted))
+            {
+                continue;
+            }
+
+            if (scoped.TenantId is null)
+            {
+                throw new InvalidOperationException(
+                    $"Tenant {tenantId} attempted to {entry.State.ToString().ToLowerInvariant()} a "
+                    + $"global {entry.Entity.GetType().Name} row. The global catalog is written "
+                    + "only by sync jobs, never from a tenant-scoped request path "
+                    + "(decision D1; docs/spec/04-schema-delta.md section 1.4).");
+            }
+
+            if (scoped.TenantId != tenantId)
+            {
+                throw new InvalidOperationException(
+                    $"Tenant {tenantId} attempted to {entry.State.ToString().ToLowerInvariant()} a "
+                    + $"{entry.Entity.GetType().Name} row owned by tenant {scoped.TenantId}.");
+            }
+        }
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
+        GuardGlobalCatalogWrites();
         ApplyTimestamps();
         return base.SaveChangesAsync(cancellationToken);
     }
 
     public override int SaveChanges()
     {
+        GuardGlobalCatalogWrites();
         ApplyTimestamps();
         return base.SaveChanges();
     }
