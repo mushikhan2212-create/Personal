@@ -35,6 +35,11 @@ builder.Services.AddHangfire(config => config
             // Hangfire tables on startup is a needless failure mode.
             PrepareSchemaIfNecessary = false,
             QueuePollInterval = TimeSpan.FromSeconds(15),
+
+            // Must match the API's value: whichever process fetches a job owns the
+            // invisibility window, so leaving this at Hangfire's 30-minute default here
+            // would strand work killed on the worker (criterion H5).
+            SlidingInvisibilityTimeout = TimeSpan.FromMinutes(5),
         }));
 
 builder.Services.AddHangfireServer();

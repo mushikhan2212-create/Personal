@@ -166,6 +166,13 @@ builder.Services.AddHangfire((sp, config) => config
         {
             PrepareSchemaIfNecessary = true,
             QueuePollInterval = TimeSpan.FromSeconds(15),
+
+            // Without this, a job whose worker dies mid-execution stays invisible for
+            // Hangfire's 30-minute default before anyone retries it - so an API crash
+            // strands in-flight work for half an hour (criterion H5). With a sliding
+            // timeout the running worker heartbeats to keep the job invisible, so long
+            // jobs are safe and only genuinely abandoned ones come back, after 5 minutes.
+            SlidingInvisibilityTimeout = TimeSpan.FromMinutes(5),
         }));
 
 builder.Services.AddHangfireServer();
