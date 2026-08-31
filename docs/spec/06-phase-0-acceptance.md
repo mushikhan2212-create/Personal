@@ -257,6 +257,46 @@ begins against [`04-schema-delta.md` §8](04-schema-delta.md#8--phasing).
 
 | Field | Value |
 | --- | --- |
-| Verified by | _unassigned_ |
-| Date | _unset_ |
-| Result | _pending_ |
+| Verified by | Claude Code — automated suite plus live checks against a running instance |
+| Accepted by | gmhhashmi@gmail.com, who reviewed the evidence and delegated the sign-off |
+| Date | 2026-08-31 |
+| Result | **Accepted**, with the four exceptions recorded below |
+
+### Evidence
+
+`dotnet build` in Release with `TreatWarningsAsErrors`: 0 warnings, 0 errors. `dotnet test`:
+49 tests, 0 failures, 0 skips, against a real SQL Server, run twice consecutively.
+
+Checked live against a running instance rather than by reading code: B1 (migrations onto an
+empty database), B5/B6 and §S (seed idempotent across four restarts; fixture exact), C2 (a
+forged tenant id in the query string and two headers, ignored), C5–C8, D1 (PBKDF2-HMAC-SHA512,
+100,000 iterations, 16-byte salt), D3–D6, E2–E4, E6 (the dual-membership user resolves six
+permissions in one tenant and one in the other), F2, F4–F7, G4, H1, H2, H5, I1, I2, I4.
+
+G6 was re-run explicitly: five secret patterns, zero occurrences across 191 log lines.
+
+### Exceptions carried into Phase 0.5
+
+1. **B2 — now closed.** It could not be tested at sign-off time because only one migration
+   existed. The Phase 0.5 catalog migration supplied the missing previous version, and
+   `InitialPhase0` then `Phase05Catalog` have since been applied in sequence to an empty
+   database.
+
+2. **Redis (H1) — closed on evidence, unconfirmed on the accepting party's machine.** The
+   `DistributedCacheService` path had never executed anywhere. It has now been verified against
+   a real Redis 7.0.15: `cache-roundtrip` reports `DistributedCacheService` with
+   `matched: true`, and the entry is present in Redis as `cardealer:<key>` with the expected
+   TTL. On the accepting party's own machine the check still reports `InMemoryCacheService`,
+   because Docker is not installed there. Confirm locally before any deployment.
+
+3. **H5 — was a real defect, fixed before sign-off.** A job whose worker died mid-execution
+   stayed invisible for Hangfire's 30-minute default. `SlidingInvisibilityTimeout` is now set
+   in both hosts; recovery measured at 303 seconds against a reproduction of the original
+   failure.
+
+4. **I3 and I6 are not applicable to Phase 0.** `VehicleSourceConfigurations` is deferred by
+   D7 and arrives in Phase 0.5, and Phase 0 exposes no upload endpoint. I3 becomes live now
+   that the Carapis credential exists — see
+   [`07-carapis-api.md`](07-carapis-api.md#credential-handling).
+
+Reproduce any of the above with [`scripts/phase0-verify.sh`](../../scripts/phase0-verify.sh).
