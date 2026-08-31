@@ -5,9 +5,14 @@ Extracted from the vendor's published API documentation (`API Docs.zip`, capture
 The client is the more reliable of the two: it carries the security schemes and URL
 templates verbatim, where the rendered page had lost its code samples.
 
-**Nothing here has been executed.** `api.carapis.com` is blocked by this environment's egress
-policy, so every statement below is read off the documentation, not off a response. Treat it
-as a contract to build against and to verify on first contact, not as measured fact.
+`api.carapis.com` is blocked by this environment's egress policy, so nothing here was
+executed from this session. Sections 1-5 are read off the documentation. **Section 5.1 onward
+is read off a real response** supplied on 2026-08-31 - a 100-record page from
+`GET /apix/catalog_api/vehicles/?available_only=true&body_type=sedan&brand=Toyota&color=white&fuel_type=hybrid`
+- and where the two disagree, the response wins and the disagreement is recorded.
+
+The edge cases from that response are kept as a fixture at
+`backend/tests/CarDealer.UnitTests/Fixtures/carapis-vehicles-list.json`.
 
 ---
 
@@ -131,6 +136,97 @@ reserved zero value ([`03-canonical-vehicle-model.md`](03-canonical-vehicle-mode
 
 ---
 
+## 5.1 What the LIST endpoint actually returns
+
+The documented field list in section 5 is the **detail** response. The list response is a
+narrower projection, and the difference decides how the adapter has to work.
+
+Present in the list: `id`, `source_code`, `brand_name`, `brand_slug`, `model_name`,
+`model_slug`, `trim`, `year`, `price_usd`, `mileage`, `fuel_type`, `transmission`,
+`body_type`, `color`, `seller_type`, `region`, `source_location`, `has_accident`,
+`is_new_vehicle`, `is_verified`, `first_seen_at`, `last_seen_at`, `thumb`, `photos`,
+`photos_count`, `has_valuation`, `has_llm_analysis`, `analysis`.
+
+**Absent from the list**, though documented on the detail: `listing_id`, `listing_url`, `vin`,
+`vehicle_no`, `engine_cc`, `seat_count`, `drive_type`, `price_original`,
+`price_original_currency`, `original_msrp`, `description`, `features`, `owner_count`,
+`warranty_type`, `inspection_passed`, `has_simple_repair`, `has_recall`, `recall_fulfilled`,
+`is_available`, `availability_checked_at`, `status_changed_at`, `generation`.
+
+Two fields appear that the documentation does not mention: `thumb`, a single photo object, and
+`photos_count`, the true photo count. **`photos` is truncated to five** regardless -
+`photos_count` reached 80 against a five-element array. Full media needs the detail call.
+
+`analysis` is likewise reduced, to `price_status`, `is_undervalued`, `percentile_rank` and
+`market_delta_pct`.
+
+### The consequence for deduplication
+
+Decision D3 composes `CanonicalHash` from normalized VIN, else chassis number, else source plus
+lot number. **The list endpoint carries none of the three.** No `vin`, no `vehicle_no`, and no
+`listing_id` to serve as a lot number.
+
+So a sync built on the list endpoint alone produces `CanonicalHash = NULL` on every row, which
+by D3 never matches anything - **nothing auto-merges, and every duplicate goes to the review
+queue by hand**. The response demonstrates the cost directly: two `subito` Yaris listings share
+trim, year, price and mileage exactly (`1.5h Trend`, 2023, 20500, 52341) and differ only by
+region and UUID. Almost certainly one car, and nothing in the payload can prove it.
+
+Either the sync calls the detail endpoint per vehicle to obtain `vin` - at a request cost that
+has to be measured against the quota - or the POC accepts a review queue as its steady state.
+That is a real decision for the POC report, not a detail.
+
+`id` is stable and unique per vehicle, so it is what `ExternalListingId` should carry. It is a
+UUID, not the source's own listing id.
+
+### Media
+
+`photos[].url` and `thumb_url` are **sometimes relative** (`/media/vehicles/...`, Carapis's own
+re-hosted WebP) and sometimes absolute. Both forms appear inside a single array, so the adapter
+must resolve relative paths against the base URL rather than assume either.
+
+`original_url` always points at the origin marketplace's CDN - `ci.encar.com`,
+`picture1.goo-net.com`, `trademe.tmcdn.co.nz`, `img.sbtjapan.com`. That Carapis re-hosts images
+under its own `/media/` path, while also exposing the origin URL, is directly relevant to
+[O1](05-open-items.md#o1--media-redistribution-rights): storing our own copy would be a third
+re-host.
+
+### Data quality observed
+
+The catalog is aggregated from marketplaces of very uneven quality, and the payload shows it.
+
+- **`price_usd` is not reliably USD.** A 2008 Camry on `opensooq_ye` is priced `17022000`; a
+  2021 Crown on `goonet` is `313000`, a 2018 Crown on `carsensor` `209000` - those read as
+  unconverted local currency. `price_usd` is also nullable. Treating it as a base-currency
+  price without a sanity check would corrupt every cross-currency range filter, which is
+  precisely what decision D6's index exists to serve. **Do not populate
+  `PriceBaseCurrency` from it unguarded**; the outliers must be quarantined, and without
+  `price_original_currency` in the list projection there is nothing to reconstruct the true
+  price from.
+- **`body_type` is unreliable.** The query filtered `body_type=sedan`, and the results include
+  a Prius and several Yaris - hatchbacks.
+- **Nullable far beyond the documentation.** `year`, `mileage` and `price_usd` all arrive null.
+  `has_accident`, `is_verified` and `is_new_vehicle` are **tri-state** - true, false or null -
+  so they map to `bool?`, and a null must never be read as false.
+- **Internally inconsistent rows.** One record is `is_new_vehicle: true` with `year: 2008` and
+  `mileage: 180`.
+- `trim` arrives as `""` as well as populated; `source_location` was null on every record.
+
+### Sources, and a correction
+
+The earlier reading of the documentation, which named only `encar`, `kbchachacha` and
+`goonet`, understated the breadth. This single page spans 25+ marketplaces across Korea, Japan,
+Ireland, New Zealand, Italy, Poland, Portugal, Romania, Canada, the US, the UK, Morocco,
+Vietnam, Sri Lanka, Cyprus, Belgium, India, Pakistan and the Gulf.
+
+It also corrects a claim made in section 6 below: **`sbtjapan` is present as a source**, and
+so are `goonet` and `carsensor`. SBT is named directly in master prompt section 3, so Carapis
+does reach at least one of the intended export channels, not none. The substance of the concern
+stands - the records are still domestic-marketplace listings without incoterm, freight or
+steering side - but "none of the named sources are available" was wrong.
+
+---
+
 ## 6. Mapping onto the canonical model
 
 Straightforward:
@@ -149,10 +245,10 @@ Straightforward:
 | `seat_count` | `Seats` |
 | `mileage` | `Mileage`, with `MileageUnit = Kilometers` (documented as km) |
 | `vin` | `Vin` |
-| `listing_id` | `VehicleListings.ExternalListingId`, and dedup rule 3's lot number |
-| `listing_url` | `SourceUrl` |
-| `price_original` + `price_original_currency` | `Price` + `CurrencyCode` |
-| `price_usd` | `PriceBaseCurrency` with `BaseCurrencyCode = USD` |
+| `id` | `VehicleListings.ExternalListingId` - `listing_id` is not in the list projection |
+| `listing_url` | `SourceUrl` - **detail endpoint only** |
+| `price_original` + `price_original_currency` | `Price` + `CurrencyCode` - **detail endpoint only** |
+| `price_usd` | `PriceBaseCurrency` with `BaseCurrencyCode = USD`, **only after a plausibility check** - see section 5.1 |
 | `is_available` | `Status` — `Active` or `Unavailable` |
 | `first_seen_at` / `last_seen_at` | `FirstSeenAtUtc` / `LastSeenAtUtc` |
 | `photos[]` | `VehicleImages` |
@@ -211,10 +307,13 @@ To be answered on first contact, and recorded in the POC report:
 - Rate limits and quotas. A `429` is documented on the export endpoints; no limit, window or
   retry header is published. The adapter must handle 429 with backoff regardless.
 - What the free tier actually withholds — fields, row counts, or endpoints.
-- Whether `photos[]` are URLs or objects, and their redistribution terms
-  ([O1](05-open-items.md#o1--media-redistribution-rights)).
-- The full `drive_type` and `seller_type` vocabularies.
-- The shape of `source_location` (6 fields) and `analysis` (17 fields).
+- Whether the detail endpoint's `vin` is populated often enough to make per-vehicle detail
+  calls worth their quota cost. This is the question that decides whether deduplication works
+  at all - see section 5.1.
+- What `price_usd` means on the sources where it is clearly not USD, and whether
+  `price_original_currency` on the detail endpoint disambiguates it.
+- The full `drive_type` vocabulary. `seller_type` shows `dealer`, `private` and `unknown`.
+- The shape of `source_location`, which was null on every record seen.
 - Whether `vehicle_no` is a chassis number, a registration number, or something else. This one
   matters: dedup rule 2 keys on chassis number, and a wrong assumption there merges cars that
   are not the same car.
