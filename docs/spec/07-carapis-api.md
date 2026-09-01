@@ -179,6 +179,78 @@ That is a real decision for the POC report, not a detail.
 `id` is stable and unique per vehicle, so it is what `ExternalListingId` should carry. It is a
 UUID, not the source's own listing id.
 
+## 5.2 What the DETAIL endpoint settles
+
+A detail response for the `encar` Camry above resolves the open questions.
+
+### Deduplication works, through the detail call
+
+`vin` is **populated and real**: `JTNBA1HK9R3039064`, seventeen characters. D3's first rule is
+therefore live, and `CanonicalHash` can be built - **but only on the detail path**, since the
+list projection omits `vin` entirely.
+
+So the choice named in 5.1 has an answer with a price attached: a sync that wants working
+auto-merge must call the detail endpoint once per vehicle. One page of 100 becomes 101
+requests. Whether that fits the quota is the measurement the POC still owes.
+
+`listing_id` is the **source's own id** (`42146564`, matching the tail of `listing_url`), which
+gives D3's third rule a real lot number and is a better `ExternalListingId` than the Carapis
+UUID wherever the detail call is made anyway.
+
+### `vehicle_no` is a registration plate, and must not be treated as a chassis number
+
+`"277가7312"` is a Korean number plate, Hangul syllable and all. Mapping it to
+`ChassisNumber` would have fed D3's second rule a value that is neither unique to the car over
+time nor a chassis number, and re-plating would silently split one car into two - or worse,
+a re-issued plate would merge two cars into one. It stays unmapped.
+
+It is also, in effect, **personal data**: a plate identifies a specific vehicle and through it
+an owner. It should not be stored or displayed without a decision under
+[O3](05-open-items.md#o3--pii-and-data-protection).
+
+### Price: the detail endpoint carries the truth
+
+`price_original: "30900000.00"` with `price_original_currency: "KRW"`, against
+`price_usd: 22000`. 30.9M KRW is roughly 22,000 USD, so the conversion here is sound - which
+means the absurd `price_usd` values in the list (17,022,000; 313,000) are **conversion
+failures on particular sources**, not a mislabeled field everywhere.
+
+That settles the mapping. Take `price_original` + `price_original_currency` as
+`Price`/`CurrencyCode`, and compute `PriceBaseCurrency` ourselves against a pinned
+`ExchangeRateId` per decision D6. `price_usd` is a cross-check for the plausibility guard, not
+a source of truth: it is unattributed, undated, and demonstrably wrong on some sources.
+
+`original_msrp` is also present, which the canonical model has nowhere to put. Not needed for
+the POC; worth noting before someone adds a column for it.
+
+### Fields the detail adds
+
+`generation` (`XV70`), `engine_cc`, `seat_count`, `drive_type`, `owner_count`,
+`warranty_type`, `inspection_passed`, `is_available` and `availability_checked_at` - the last
+two being what `VehicleStatus` should actually key on, rather than inferring availability from
+the listing's presence.
+
+`photo_type` vocabulary is `exterior`, `interior`, `other`. The full 30 photos arrive here
+against the list's truncated five.
+
+### Two things not to trust
+
+`features` is `[]` on a car whose own description lists brown leather seats, a smart key, a
+rear-view camera and lane departure warning. The options are in free text, not in the array.
+Any feature-based filter built on `features` would silently match nothing.
+
+`analysis.actual_price` is `20488` while `price_usd` is `22000`. The valuation block is not
+consistent with the listing it describes, so it must not be read as a price. Its
+`analysis_updated_at` is fifty seconds after `first_seen_at`, so this is not staleness from a
+later price change.
+
+The `description` also arrives with its escaping broken - literal `n` where newlines belong
+(`"Sedann### Highlightsn- **Accident-Free**"`) - and this one ends `"yeah yeah yeah"`, which
+reads like unreviewed generated content in a production record. Store it raw; do not render it
+as Markdown without repairing the escaping, and do not treat it as authoritative.
+
+---
+
 ### Media
 
 `photos[].url` and `thumb_url` are **sometimes relative** (`/media/vehicles/...`, Carapis's own
@@ -307,12 +379,13 @@ To be answered on first contact, and recorded in the POC report:
 - Rate limits and quotas. A `429` is documented on the export endpoints; no limit, window or
   retry header is published. The adapter must handle 429 with backoff regardless.
 - What the free tier actually withholds — fields, row counts, or endpoints.
-- Whether the detail endpoint's `vin` is populated often enough to make per-vehicle detail
-  calls worth their quota cost. This is the question that decides whether deduplication works
-  at all - see section 5.1.
-- What `price_usd` means on the sources where it is clearly not USD, and whether
-  `price_original_currency` on the detail endpoint disambiguates it.
-- The full `drive_type` vocabulary. `seller_type` shows `dealer`, `private` and `unknown`.
+- **How often `vin` is populated across sources.** It is present and valid on the one `encar`
+  record checked, which proves the field is real; it does not prove coverage. A Japanese or
+  Italian record may well leave it null, and coverage decides whether the detail call is worth
+  its cost. Measure it across sources before committing to a sync shape.
+- The quota cost of one detail call per vehicle, which the dedup path now requires.
+- The full `drive_type` vocabulary (`fwd` observed). `seller_type` shows `dealer`, `private`
+  and `unknown`; `photo_type` shows `exterior`, `interior` and `other`.
 - The shape of `source_location`, which was null on every record seen.
 - Whether `vehicle_no` is a chassis number, a registration number, or something else. This one
   matters: dedup rule 2 keys on chassis number, and a wrong assumption there merges cars that

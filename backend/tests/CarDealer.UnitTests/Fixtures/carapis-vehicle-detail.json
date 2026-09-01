@@ -1,0 +1,73 @@
+{
+  "_comment": "Real Carapis DETAIL response, captured 2026-08-31 from GET /apix/catalog_api/vehicles/7461e440-22cc-4f2b-b3d1-a754b25bcc31/. Photos trimmed from 30 to 5 covering every photo_type and both the relative and absolute url forms; description truncated but its broken escaping and trailing junk are preserved verbatim because both are real. Everything else is as received.",
+  "id": "7461e440-22cc-4f2b-b3d1-a754b25bcc31",
+  "source_code": "encar",
+  "brand_name": "Toyota", "brand_slug": "toyota",
+  "model_name": "Camry", "model_slug": "camry",
+  "trim": "2.5 LE Hybrid", "generation": "XV70", "year": 2024,
+
+  "price_usd": 22000,
+  "price_original": "30900000.00",
+  "price_original_currency": "KRW",
+  "original_msrp": "39000000.00",
+
+  "mileage": 48816, "engine_cc": 2487, "seat_count": 5,
+  "fuel_type": "hybrid", "transmission": "auto", "body_type": "sedan",
+  "color": "white", "drive_type": "fwd",
+
+  "seller_type": "dealer", "region": "Incheon", "source_location": null,
+
+  "has_accident": false,
+  "has_simple_repair": null, "has_recall": null, "recall_fulfilled": null,
+  "warranty_type": "manufacturer warranty",
+  "inspection_passed": true, "owner_count": 1,
+  "is_new_vehicle": false, "is_verified": true,
+  "is_undervalued": false, "valuation_score": null,
+
+  "features": [],
+  "description": "## 2024 Toyota Camry - Clean Hybrid Sedann### Highlightsn- **Accident-Free**: Completely no-accident vehicle with verified historyn- **Single Owner**: Personally owned since new with no commercial/rental usenn### Optionsn- Brown leather seatsn- Smart key (2 keys included)n- Rearview cameran- Toyota manufacturer warranty (36 months / 100,000 km)nnyeah yeah yeah",
+
+  "listing_url": "https://fem.encar.com/cars/detail/42146564",
+  "listing_id": "42146564",
+  "vin": "JTNBA1HK9R3039064",
+  "vehicle_no": "277가7312",
+
+  "is_available": true,
+  "availability_checked_at": "2026-07-30T04:17:12Z",
+  "first_seen_at": "2026-07-24T06:08:50Z",
+  "last_seen_at": "2026-07-24T06:08:50Z",
+  "status_changed_at": null,
+
+  "photos": [
+    { "url": "/media/vehicles/746/1e4/7461e440-22cc-4f2b-b3d1-a754b25bcc31/026793d4a39e4b88994d72fb470d4803.webp",
+      "thumb_url": "/media/vehicles/746/1e4/7461e440-22cc-4f2b-b3d1-a754b25bcc31/026793d4a39e4b88994d72fb470d4803.webp",
+      "original_url": "https://ci.encar.com/carpicture03/pic4213/42133516_001.jpg?impolicy=widthRate&rw=1280",
+      "is_main": true, "photo_type": "exterior", "position": 0, "width": 1600, "height": 900 },
+    { "url": "https://ci.encar.com/carpicture03/pic4213/42133516_002.jpg?impolicy=widthRate&rw=1280",
+      "thumb_url": "https://ci.encar.com/carpicture03/pic4213/42133516_002.jpg?impolicy=widthRate&rw=1280",
+      "original_url": "https://ci.encar.com/carpicture03/pic4213/42133516_002.jpg?impolicy=widthRate&rw=1280",
+      "is_main": false, "photo_type": "exterior", "position": 1, "width": null, "height": null },
+    { "url": "https://ci.encar.com/carpicture03/pic4213/42133516_036.jpg?impolicy=widthRate&rw=1280",
+      "thumb_url": "https://ci.encar.com/carpicture03/pic4213/42133516_036.jpg?impolicy=widthRate&rw=1280",
+      "original_url": "https://ci.encar.com/carpicture03/pic4213/42133516_036.jpg?impolicy=widthRate&rw=1280",
+      "is_main": false, "photo_type": "interior", "position": 9, "width": null, "height": null },
+    { "url": "https://ci.encar.com/carpicture03/pic4213/42133516_041.jpg?impolicy=widthRate&rw=1280",
+      "thumb_url": "https://ci.encar.com/carpicture03/pic4213/42133516_041.jpg?impolicy=widthRate&rw=1280",
+      "original_url": "https://ci.encar.com/carpicture03/pic4213/42133516_041.jpg?impolicy=widthRate&rw=1280",
+      "is_main": false, "photo_type": "other", "position": 11, "width": null, "height": null }
+  ],
+
+  "has_valuation": true, "has_llm_analysis": false,
+  "analysis": {
+    "price_status": "fair", "is_undervalued": false,
+    "percentile_rank": 86, "market_delta_pct": -3.7,
+    "estimated_price": 21236, "price_low": 17257, "price_high": 25216,
+    "confidence": 61.2,
+    "actual_price": 20488,
+    "price_difference": 749, "price_difference_pct": 3.7,
+    "comparable_count": 7,
+    "cohort_min_price": 18764, "cohort_max_price": 32157, "cohort_median_price": 23538,
+    "breakdown": { "base_price": "23537.51", "year_impact": "-504.38", "mileage_impact": "-1796.72", "options_impact": "0.00" },
+    "analysis_updated_at": "2026-07-24T06:09:40.455428Z"
+  }
+}
