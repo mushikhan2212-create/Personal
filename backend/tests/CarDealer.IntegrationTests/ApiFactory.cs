@@ -20,7 +20,7 @@ namespace CarDealer.IntegrationTests;
 /// exactly those. A green in-memory suite would prove nothing about the constraints that
 /// matter.
 /// </remarks>
-public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
+public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly string _databaseName = "CarDealerTests_" + Guid.NewGuid().ToString("N")[..12];
 

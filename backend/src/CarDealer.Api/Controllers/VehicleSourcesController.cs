@@ -1,6 +1,7 @@
 using Asp.Versioning;
 using CarDealer.Api.Authorization;
 using CarDealer.Domain.Entities;
+using CarDealer.Domain.Enums;
 using CarDealer.Infrastructure.Persistence;
 using CarDealer.Infrastructure.Sync;
 using Microsoft.AspNetCore.Mvc;
@@ -16,11 +17,14 @@ public sealed class VehicleSourcesController : ControllerBase
 {
     private readonly CarDealerDbContext _db;
     private readonly VehicleSyncService _sync;
+    private readonly IServiceScopeFactory _scopeFactory;
 
-    public VehicleSourcesController(CarDealerDbContext db, VehicleSyncService sync)
+    public VehicleSourcesController(
+        CarDealerDbContext db, VehicleSyncService sync, IServiceScopeFactory scopeFactory)
     {
         _db = db;
         _sync = sync;
+        _scopeFactory = scopeFactory;
     }
 
     /// <summary>Lists the sources this tenant can see: shared ones, plus its own.</summary>
@@ -40,9 +44,29 @@ public sealed class VehicleSourcesController : ControllerBase
                 s.IsShared,
                 s.IsActive,
                 VehicleCount = _db.VehicleListings.Count(l => l.VehicleSourceId == s.Id && l.IsActive),
+
+                // Last run that actually brought data in. A failed run also sets
+                // CompletedAtUtc, so counting it here would put a fresh timestamp on a source
+                // whose sync had just failed outright - the card would read "last sync two
+                // minutes ago" when nothing was synced at all.
                 LastSyncAtUtc = _db.SyncJobs
+                    .Where(j => j.VehicleSourceId == s.Id
+                        && j.CompletedAtUtc != null
+                        && (j.Status == SyncJobStatus.Succeeded
+                            || j.Status == SyncJobStatus.PartiallySucceeded))
+                    .Max(j => (DateTime?)j.CompletedAtUtc),
+
+                // The last attempt, whatever became of it, reported separately so a failure is
+                // visible rather than merely absent. A source that has never synced and one
+                // whose every sync has failed look identical without this.
+                LastAttemptAtUtc = _db.SyncJobs
                     .Where(j => j.VehicleSourceId == s.Id && j.CompletedAtUtc != null)
                     .Max(j => (DateTime?)j.CompletedAtUtc),
+                LastAttemptStatus = _db.SyncJobs
+                    .Where(j => j.VehicleSourceId == s.Id && j.CompletedAtUtc != null)
+                    .OrderByDescending(j => j.CompletedAtUtc)
+                    .Select(j => j.Status.ToString())
+                    .FirstOrDefault(),
             })
             .ToListAsync(ct)
             .ConfigureAwait(false);
@@ -104,7 +128,20 @@ public sealed class VehicleSourcesController : ControllerBase
             });
         }
 
-        var result = await _sync.RunAsync(
+        // A sync writes the GLOBAL catalog - vehicles with TenantId null, shared by every
+        // tenant - and CarDealerDbContext.GuardGlobalCatalogWrites refuses a global write from
+        // any context where a tenant is resolved. That guard is right, and this request has a
+        // tenant: the caller signed in as one. So the sync runs in its own DI scope, which gets
+        // a fresh TenantContext with no tenant set - the "background context where no tenant is
+        // resolved" the guard names as the one legitimate route to a global write, and the same
+        // context the Hangfire job will run in when this stops being synchronous.
+        //
+        // Authorization is unaffected: HasPermission has already run against the caller's own
+        // scope. Only the data context is unscoped, never the decision to let them in.
+        using var scope = _scopeFactory.CreateScope();
+        var sync = scope.ServiceProvider.GetRequiredService<VehicleSyncService>();
+
+        var result = await sync.RunAsync(
             new VehicleSyncOptions
             {
                 SourceCode = code,

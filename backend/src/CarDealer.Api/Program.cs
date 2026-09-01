@@ -2,6 +2,7 @@ using System.Text;
 using System.Threading.RateLimiting;
 using Asp.Versioning;
 using CarDealer.Api.Authorization;
+using CarDealer.Api.Serialization;
 using CarDealer.Api.Configuration;
 using CarDealer.Api.Middleware;
 using CarDealer.Api.Services;
@@ -34,7 +35,13 @@ builder.Services.AddInfrastructure(builder.Configuration, builder.Environment);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 
-builder.Services.AddControllers();
+builder.Services
+    .AddControllers()
+
+    // Every DateTime this API returns is a UTC field, but the ones read back from datetime2
+    // arrive with Kind = Unspecified and would serialise without a Z, which a browser then
+    // reads as local time. See UtcDateTimeConverter.
+    .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new UtcDateTimeConverter()));
 builder.Services.AddEndpointsApiExplorer();
 
 // One error contract for every failure, including the 401 and 403 produced by the
