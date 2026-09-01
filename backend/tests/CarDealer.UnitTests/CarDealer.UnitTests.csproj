@@ -7,6 +7,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
     <PackageReference Include="xunit" Version="2.*" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="9.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.*">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
@@ -17,6 +18,11 @@
     <ProjectReference Include="..\..\src\CarDealer.Application\CarDealer.Application.csproj" />
     <ProjectReference Include="..\..\src\CarDealer.Domain\CarDealer.Domain.csproj" />
     <ProjectReference Include="..\..\src\CarDealer.Infrastructure\CarDealer.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\CarDealer.Integrations\CarDealer.Integrations.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Fixtures\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
