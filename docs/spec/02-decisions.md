@@ -24,6 +24,7 @@ Schema consequences are in [`04-schema-delta.md`](04-schema-delta.md).
 | [D9](#d9--ant-design-as-the-component-library) | Ant Design as the component library | Accepted |
 | [D10](#d10--phase-0-is-backend-only-swagger-is-the-test-surface) | Phase 0 is backend-only; Swagger is the test surface | Accepted |
 | [D11](#d11--net-10-not-net-8) | .NET 10, not .NET 8 (**amends §4**) | Accepted |
+| [D12](#d12--the-poc-syncs-japanese-exporters-only) | The POC syncs Japanese exporters only (**narrows §3**) | Accepted |
 
 ---
 
@@ -483,6 +484,72 @@ reference. The pin can be removed once Hangfire's own floor moves past 13.0.1.
   onto a runtime that leaves support within months.
 - **Defer the move to a later phase.** Same end state, strictly more work: every phase adds
   code that the upgrade must then be revalidated against.
+
+---
+
+## D12 — The POC syncs Japanese exporters only
+
+### Problem
+
+Carapis aggregates 25+ marketplaces across Korea, Japan, Ireland, New Zealand, Italy, Poland,
+Portugal, Romania, Canada, the US, the UK, Morocco, Vietnam, Sri Lanka, Cyprus, Belgium, India,
+Pakistan and the Gulf. Master prompt §3 names BE FORWARD, SBT and TCV — the Japanese export
+trade — but does not say what to do with everything else, and §18 forbids unlimited
+synchronization without filters and quotas.
+
+Syncing the lot would be both a quota problem and a product problem: a Polish OLX listing and a
+Sri Lankan ikman listing are domestic retail ads, priced in local currency to local buyers, and
+are not stock a Japanese-export dealer can sell.
+
+### Decision
+
+**The POC syncs Japanese exporters only, four or five of them, selected from what Carapis
+actually offers.** Every sync request carries an explicit `source` filter. No unfiltered call
+to the vehicles endpoint is made at any point.
+
+### Why
+
+- It is the product's actual market. The canonical model was extended by
+  [D5](#d5--full-export-trade-canonical-model) specifically for export-trade fields, and those
+  fields only mean anything against export stock.
+- It satisfies §18's filter-and-quota requirement with one parameter rather than a
+  post-filtering pass over data we paid to fetch.
+- It makes the POC's completeness measurement legible. Averaging field coverage across a
+  Japanese exporter and a Moroccan classified ad produces a number that describes neither.
+
+### The distinction this rests on
+
+Not every Japanese source is an exporter, and the difference is the whole point:
+
+| Source | Kind | Use to us |
+| --- | --- | --- |
+| `sbtjapan` | **Exporter** — sells for export, ships worldwide | Directly relevant |
+| `goonet` | Japanese **domestic** marketplace | Domestic retail, JPY, sold inside Japan |
+| `carsensor` | Japanese **domestic** marketplace | Same |
+
+A domestic Goo-net listing is a car for sale in Japan to a buyer in Japan. Turning it into
+export stock means buying it, and that is a different business from reselling an exporter's
+listing. Both are "Japanese sources"; only one is a Japanese *exporter*.
+
+### Cost accepted
+
+- **Only one exporter is confirmed available.** `sbtjapan` appeared in a real response.
+  BE FORWARD and TCV did **not** — though that sample was filtered to white hybrid Toyota
+  sedans, so their absence is not proof they are missing. The `sources/` endpoint settles it,
+  and D12 cannot be executed until it has been read.
+- If Carapis carries fewer than four Japanese exporters, the POC either runs with fewer or
+  admits domestic Japanese marketplaces as a second tier, clearly labelled. It does not
+  quietly pad the count with unrelated markets.
+- Sources outside Japan stay reachable through the same adapter — they are one `source`
+  parameter away — so this narrows the POC, not the architecture.
+
+### Rejected
+
+- **Sync everything Carapis offers.** Widest catalog and no selection to justify, but it
+  violates §18, spends quota on stock nobody can sell, and makes every POC measurement an
+  average over incomparable markets.
+- **Filter after fetching.** Same data volume and same quota cost, with the filtering logic
+  duplicated in our code instead of pushed to the provider that already supports it.
 
 ---
 

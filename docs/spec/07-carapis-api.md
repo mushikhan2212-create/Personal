@@ -93,6 +93,28 @@ Filter parameters: `available_only`, `body_type`, `brand`, `color`, `features`, 
 
 `ordering` takes a field name, prefixed with `-` for descending.
 
+## 3.1 Pagination is not a rate limit
+
+`page` and `page_size` bound the size of a **response**. They do not bound the **rate** of
+requests, and nothing in them prevents a `429`. The two are worth keeping apart because they
+solve different problems:
+
+- `page_size` decides how many requests a given coverage costs. Fetching 500 vehicles at
+  `page_size=100` is 5 requests; at `page_size=20` it is 25. Raising it is the cheapest way to
+  stay inside a quota, and the observed response used `page_size=100`, which is very likely the
+  server's cap.
+- A **rate limit** is enforced by the server, arrives as `429`, and is unaffected by how large
+  the pages are. The documentation shows a `429` on the export endpoints and publishes no
+  limit, window, or retry header for the vehicles endpoint.
+
+So the adapter needs both: a large `page_size` and a bounded page count to satisfy master
+prompt §18's filters and quotas, **and** exponential backoff on `429` because the ceiling is
+undocumented and will be discovered by hitting it.
+
+The dedup path makes this sharper. Section 5.2 establishes that `vin` only arrives on the
+detail endpoint, so a page of 100 costs 101 requests, and `page_size` does nothing about the
+100 detail calls. Request budget is driven by vehicle count, not page count.
+
 ## 4. Pagination
 
 ```json
