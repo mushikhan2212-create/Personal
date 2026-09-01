@@ -1,0 +1,28 @@
+[
+  { "_comment": "Real GET /apix/catalog_api/sources/ response, captured 2026-08-31. Trimmed from 84 entries to the Japan region in full plus the duplicate-code pairs from other regions, because those are what the adapter has to reason about. last_parsed_at was null on every one of the 84." },
+
+  { "code": "aucnet",            "name": "Aucnet",               "region": "japan", "country": "Japan", "availability": "on_demand", "last_parsed_at": null },
+  { "code": "beforward",         "name": "BeForward",            "region": "japan", "country": "Japan", "availability": "on_demand", "last_parsed_at": null },
+  { "code": "carsensor",         "name": "Carsensor",            "region": "japan", "country": "Japan", "availability": "live",      "last_parsed_at": null },
+  { "code": "goo_net",           "name": "Goo-net",              "region": "japan", "country": "Japan", "availability": "on_demand", "last_parsed_at": null },
+  { "code": "goonet",            "name": "Goo-net",              "region": "japan", "country": "Japan", "availability": "live",      "last_parsed_at": null },
+  { "code": "goo_net_exchange",  "name": "Goo-net Exchange",     "region": "japan", "country": "Japan", "availability": "on_demand", "last_parsed_at": null },
+  { "code": "goonet_exchange",   "name": "Goo-net Exchange",     "region": "japan", "country": "Japan", "availability": "live",      "last_parsed_at": null },
+  { "code": "kurumaerabi",       "name": "Kurumaerabi",          "region": "japan", "country": "Japan", "availability": "on_demand", "last_parsed_at": null },
+  { "code": "nikkyo",            "name": "Nikkyo",               "region": "japan", "country": "Japan", "availability": "on_demand", "last_parsed_at": null },
+  { "code": "royal_trading",     "name": "Royal Trading",        "region": "japan", "country": "Japan", "availability": "on_demand", "last_parsed_at": null },
+  { "code": "sat_japan",         "name": "SAT Japan",            "region": "japan", "country": "Japan", "availability": "on_demand", "last_parsed_at": null },
+  { "code": "sbt_japan",         "name": "SBT Japan",            "region": "japan", "country": "Japan", "availability": "on_demand", "last_parsed_at": null },
+  { "code": "tcv",               "name": "TCV",                  "region": "japan", "country": "Japan", "availability": "on_demand", "last_parsed_at": null },
+  { "code": "yahoo_auctions_jp", "name": "Yahoo Auctions Japan", "region": "japan", "country": "Japan", "availability": "on_demand", "last_parsed_at": null },
+
+  { "_comment": "The same sources again under different codes, in region 'other' with country blank. sbtjapan - not sbt_japan - is the code that actually returned vehicles.",
+    "code": "sbtjapan",  "name": "Sbtjapan",  "region": "other", "country": "", "availability": "on_demand", "last_parsed_at": null },
+  { "code": "satjapan",  "name": "Satjapan",  "region": "other", "country": "", "availability": "on_demand", "last_parsed_at": null },
+  { "code": "goo-net",   "name": "Goo Net",   "region": "other", "country": "", "availability": "on_demand", "last_parsed_at": null },
+  { "code": "yahoo_auctions", "name": "Yahoo_Auctions", "region": "other", "country": "", "availability": "on_demand", "last_parsed_at": null },
+
+  { "_comment": "Same disagreement outside Japan - one code live, the other on_demand, for one marketplace.",
+    "code": "kbchachacha",  "name": "KB Chachacha", "region": "korea", "country": "Korea", "availability": "live",      "last_parsed_at": null },
+  { "code": "kb_chachacha", "name": "KB Chachacha", "region": "korea", "country": "Korea", "availability": "on_demand", "last_parsed_at": null }
+]

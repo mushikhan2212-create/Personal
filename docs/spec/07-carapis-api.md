@@ -319,6 +319,61 @@ does reach at least one of the intended export channels, not none. The substance
 stands - the records are still domestic-marketplace listings without incoterm, freight or
 steering side - but "none of the named sources are available" was wrong.
 
+## 5.3 The source registry, and what it does to D12
+
+`GET /apix/catalog_api/sources/` returns 84 entries. Three things in it matter.
+
+### All three exporters the master prompt names are present
+
+`beforward`, `sbt_japan` and `tcv` all exist, alongside `sat_japan`, `royal_trading`,
+`nikkyo`, `kurumaerabi`, `aucnet` and `yahoo_auctions_jp`. The earlier worry that Carapis might
+not reach the Japanese export trade at all was unfounded — it reaches most of it.
+
+### But every Japanese exporter is `on_demand`
+
+Of 14 Japan-region entries, only three are `live`: `carsensor`, `goonet` and
+`goonet_exchange`. The first two are **domestic** marketplaces. `goonet_exchange` — Goo-net's
+export-facing arm — is the **only live, export-oriented Japanese source**.
+
+The vendor defines `on_demand` as "connected per order". So BE FORWARD, SBT, TCV and SAT Japan
+are not simply sitting there to be queried; connecting them looks like a commercial
+conversation, which makes [O2](05-open-items.md#o2--carapis-licensing-gate) a blocker for the
+POC rather than a Phase 1 formality.
+
+`on_demand` does **not** mean empty, though: `sbtjapan` is flagged `on_demand` and returned
+rows in the vehicles response. So the flag is a statement about provisioning, not about whether
+data exists today, and the only way to know which of these codes actually yields vehicles is to
+ask each one for a count.
+
+### Six sources appear under two or three codes, disagreeing about themselves
+
+| Source | Codes, with region and availability |
+| --- | --- |
+| Goo-net | `goonet` (japan/**live**), `goo_net` (japan/on_demand), `goo-net` (other/on_demand) |
+| Goo-net Exchange | `goonet_exchange` (japan/**live**), `goo_net_exchange` (japan/on_demand) |
+| SBT Japan | `sbt_japan` (japan/on_demand), `sbtjapan` (other/on_demand) |
+| SAT Japan | `sat_japan` (japan/on_demand), `satjapan` (other/on_demand) |
+| KB Chachacha | `kbchachacha` (korea/**live**), `kb_chachacha` (korea/on_demand) |
+| eCars Trade | `ecars_trade` (europe/on_demand), `ecarstrade` (other/on_demand) |
+
+The pattern is an underscored code in a real region against an unpunctuated code in region
+`other` with a blank country — two naming conventions merged without deduplication. They
+disagree on `availability` as well as region, so the flag cannot be trusted per-source without
+checking which code carries data.
+
+This is a live hazard for [D12](02-decisions.md#d12--the-poc-syncs-japanese-exporters-only):
+filtering on `sbt_japan` and filtering on `sbtjapan` are different queries, and only the second
+is known to return anything. **Every source code in the POC configuration must be validated by
+a count call before it is trusted**, and configuration must carry the code that works, not the
+one that reads more tidily.
+
+### `last_parsed_at` is null on all 84
+
+The documentation says this field "shows crawl freshness". It is null on every source without
+exception, so freshness cannot be read from this endpoint at all. Master prompt §8 requires the
+POC to measure freshness, so it will have to be derived from `last_seen_at` on the vehicles
+themselves.
+
 ---
 
 ## 6. Mapping onto the canonical model

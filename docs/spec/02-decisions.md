@@ -531,15 +531,34 @@ A domestic Goo-net listing is a car for sale in Japan to a buyer in Japan. Turni
 export stock means buying it, and that is a different business from reselling an exporter's
 listing. Both are "Japanese sources"; only one is a Japanese *exporter*.
 
+### The sources, now confirmed
+
+The `sources/` endpoint has been read. All three exporters the master prompt names exist, and
+the earlier worry that Carapis might not reach the export trade was unfounded. The candidate
+set for the POC:
+
+| # | Code | Source | Availability | Note |
+| --- | --- | --- | --- | --- |
+| 1 | `sbtjapan` | SBT Japan | on_demand | **Confirmed returning rows.** Use this code, not `sbt_japan` |
+| 2 | `goonet_exchange` | Goo-net Exchange | **live** | The only live export-facing Japanese source |
+| 3 | `beforward` | BeForward | on_demand | Named in §3; the largest of these by volume |
+| 4 | `tcv` | TCV | on_demand | Named in §3 |
+| 5 | `satjapan` | SAT Japan | on_demand | Reserve; `royal_trading` and `nikkyo` also exist |
+
 ### Cost accepted
 
-- **Only one exporter is confirmed available.** `sbtjapan` appeared in a real response.
-  BE FORWARD and TCV did **not** — though that sample was filtered to white hybrid Toyota
-  sedans, so their absence is not proof they are missing. The `sources/` endpoint settles it,
-  and D12 cannot be executed until it has been read.
-- If Carapis carries fewer than four Japanese exporters, the POC either runs with fewer or
-  admits domestic Japanese marketplaces as a second tier, clearly labelled. It does not
-  quietly pad the count with unrelated markets.
+- **Four of the five are `on_demand`**, which the vendor defines as "connected per order".
+  Only `goonet_exchange` is `live`, and `sbtjapan` is known to return rows despite its flag.
+  Whether the other three yield anything without a commercial arrangement is unknown, so
+  **[O2](05-open-items.md#o2--carapis-licensing-gate) is now a blocker for the POC**, not a
+  Phase 1 formality. The POC runs with whichever of the five actually return data.
+- **Source codes must be validated, not assumed.** Six sources appear under two or three codes
+  disagreeing about their own region and availability — `sbtjapan` returns rows where
+  `sbt_japan` may not. Every code in configuration is verified by a count call first; see
+  [`07-carapis-api.md` §5.3](07-carapis-api.md#53-the-source-registry-and-what-it-does-to-d12).
+- If fewer than four exporters can be connected, the POC runs with fewer, or admits the
+  domestic `carsensor` and `goonet` as a clearly labelled second tier. It does not pad the
+  count with unrelated markets.
 - Sources outside Japan stay reachable through the same adapter — they are one `source`
   parameter away — so this narrows the POC, not the architecture.
 
