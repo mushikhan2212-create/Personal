@@ -29,6 +29,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CarDealer.Application\CarDealer.Application.csproj" />
+    <ProjectReference Include="..\CarDealer.Integrations\CarDealer.Integrations.csproj" />
     <ProjectReference Include="..\CarDealer.Domain\CarDealer.Domain.csproj" />
   </ItemGroup>
 
