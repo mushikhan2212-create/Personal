@@ -1,4 +1,9 @@
 using CarDealer.Application.Abstractions;
+using CarDealer.Application.Search;
+using CarDealer.Application.VehicleSources;
+using CarDealer.Infrastructure.Search;
+using CarDealer.Infrastructure.Sync;
+using CarDealer.Integrations.Carapis;
 using CarDealer.Application.Auth;
 using CarDealer.Infrastructure.Audit;
 using CarDealer.Infrastructure.Auth;
@@ -56,6 +61,12 @@ public static class DependencyInjection
         services.AddScoped<IBackgroundJobScheduler, HangfireJobScheduler>();
         services.AddScoped<EchoJob>();
 
+        // Search behind its abstraction (decision D4). Swapping in an engine later is a change
+        // to this one line.
+        services.AddScoped<ISearchProvider, SqlServerSearchProvider>();
+
+        AddVehicleSources(services, configuration);
+
         return services;
     }
 
@@ -69,6 +80,43 @@ public static class DependencyInjection
     /// healthy while losing every entry per instance, which is far worse than refusing to
     /// boot.
     /// </remarks>
+    /// <summary>
+    /// Registers vehicle source providers and the sync service.
+    /// </summary>
+    /// <remarks>
+    /// Master prompt section 8 requires that Carapis can be disabled without breaking the rest
+    /// of the platform, and this is where that is true or not. With no API key configured the
+    /// provider is simply not registered: the catalog, the search and every other endpoint
+    /// keep working, and only the sync trigger has nothing to run. Nothing above this method
+    /// names Carapis.
+    /// </remarks>
+    private static void AddVehicleSources(IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddOptions<CarapisOptions>()
+            .Bind(configuration.GetSection(CarapisOptions.SectionName))
+            .ValidateDataAnnotations();
+
+        var apiKey = configuration[$"{CarapisOptions.SectionName}:ApiKey"];
+
+        if (!string.IsNullOrWhiteSpace(apiKey))
+        {
+            var baseUrl = configuration[$"{CarapisOptions.SectionName}:BaseUrl"] ?? "https://api.carapis.com";
+
+            services.AddHttpClient<CarapisVehicleProvider>(client =>
+            {
+                client.BaseAddress = new Uri(baseUrl);
+                client.Timeout = TimeSpan.FromSeconds(30);
+            });
+
+            services.AddScoped<IVehicleSourceSyncProvider>(sp => sp.GetRequiredService<CarapisVehicleProvider>());
+            services.AddScoped<IVehicleSourceDetailProvider>(sp => sp.GetRequiredService<CarapisVehicleProvider>());
+            services.AddScoped<IVehicleSourceCatalogProvider>(sp => sp.GetRequiredService<CarapisVehicleProvider>());
+        }
+
+        services.AddScoped<CarapisNormalizer>();
+        services.AddScoped<VehicleSyncService>();
+    }
+
     private static void AddCaching(
         IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
     {

@@ -94,10 +94,10 @@ public sealed class VehicleSyncServiceTests : IClassFixture<ApiFactory>
 
         var service = new VehicleSyncService(
             db,
-            provider,
             new CarapisNormalizer(),
             scope.ServiceProvider.GetRequiredService<IDateTimeProvider>(),
-            NullLogger<VehicleSyncService>.Instance);
+            NullLogger<VehicleSyncService>.Instance,
+            provider);
 
         return (service, provider, scope, source.Id);
     }

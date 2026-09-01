@@ -41,6 +41,18 @@ public static class Permissions
 
     public const string AuditRead = "audit.read";
 
+    /// <summary>Read the vehicle catalog. Granted to every role - search is the product.</summary>
+    public const string VehiclesRead = "vehicles.read";
+
+    /// <summary>
+    /// Trigger a synchronization run against a vehicle source.
+    /// </summary>
+    /// <remarks>
+    /// Separate from reading, and granted narrowly, because a sync spends provider quota and
+    /// writes to the shared global catalog. It is not a browsing action.
+    /// </remarks>
+    public const string VehiclesSync = "vehicles.sync";
+
     public static readonly IReadOnlyDictionary<string, string> All = new Dictionary<string, string>
     {
         [TenantsRead] = "View tenant details and settings",
@@ -50,6 +62,8 @@ public static class Permissions
         [RolesRead] = "View roles and their permissions",
         [RolesManage] = "Create, modify and delete tenant roles",
         [AuditRead] = "Read the audit log",
+        [VehiclesRead] = "Search and view the vehicle catalog",
+        [VehiclesSync] = "Trigger a synchronization run against a vehicle source",
     };
 
     /// <summary>
@@ -62,9 +76,13 @@ public static class Permissions
             [SystemRoles.Admin] =
             [
                 TenantsRead, UsersRead, UsersManage, RolesRead, RolesManage, AuditRead,
+                VehiclesRead, VehiclesSync,
             ],
-            [SystemRoles.SalesManager] = [TenantsRead, UsersRead, RolesRead],
-            [SystemRoles.Salesperson] = [TenantsRead, UsersRead],
-            [SystemRoles.ReadOnly] = [TenantsRead],
+            [SystemRoles.SalesManager] = [TenantsRead, UsersRead, RolesRead, VehiclesRead, VehiclesSync],
+            [SystemRoles.Salesperson] = [TenantsRead, UsersRead, VehiclesRead],
+
+            // ReadOnly can search. Withholding it would make the role useless in a product
+            // whose main screen is a search.
+            [SystemRoles.ReadOnly] = [TenantsRead, VehiclesRead],
         };
 }

@@ -88,18 +88,28 @@ public sealed record VehicleSyncResult
 public sealed class VehicleSyncService
 {
     private readonly CarDealerDbContext _db;
-    private readonly IVehicleSourceSyncProvider _provider;
+    private readonly IVehicleSourceSyncProvider? _provider;
     private readonly IVehicleSourceDetailProvider? _detailProvider;
     private readonly CarapisNormalizer _normalizer;
     private readonly IDateTimeProvider _clock;
     private readonly ILogger<VehicleSyncService> _logger;
 
+    /// <summary>
+    /// The sync provider is optional.
+    /// </summary>
+    /// <remarks>
+    /// Master prompt section 8 requires Carapis be disablable without breaking the platform,
+    /// and a required dependency here would break it in the most annoying way possible: with
+    /// no API key configured the provider is not registered, this service could not be
+    /// constructed, and the controller that depends on it would fail to resolve - turning
+    /// "sync is unavailable" into a 500 on an endpoint that should simply say so.
+    /// </remarks>
     public VehicleSyncService(
         CarDealerDbContext db,
-        IVehicleSourceSyncProvider provider,
         CarapisNormalizer normalizer,
         IDateTimeProvider clock,
         ILogger<VehicleSyncService> logger,
+        IVehicleSourceSyncProvider? provider = null,
         IVehicleSourceDetailProvider? detailProvider = null)
     {
         _db = db;
@@ -110,8 +120,18 @@ public sealed class VehicleSyncService
         _detailProvider = detailProvider;
     }
 
+    /// <summary>True when a provider is registered and a run is possible at all.</summary>
+    public bool IsConfigured => _provider is not null;
+
     public async Task<VehicleSyncResult> RunAsync(VehicleSyncOptions options, CancellationToken ct = default)
     {
+        if (_provider is null)
+        {
+            throw new InvalidOperationException(
+                "No vehicle source provider is registered. Configure Carapis:ApiKey to enable "
+                + "synchronization - every other part of the platform works without it.");
+        }
+
         var startedAt = _clock.UtcNow;
 
         var source = await _db.VehicleSources

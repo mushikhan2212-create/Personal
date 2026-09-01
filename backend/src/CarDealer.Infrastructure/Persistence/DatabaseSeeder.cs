@@ -55,11 +55,61 @@ public sealed class DatabaseSeeder
     {
         await SeedPermissionsAsync(ct).ConfigureAwait(false);
         await SeedSystemRolesAsync(ct).ConfigureAwait(false);
+        await SeedVehicleSourcesAsync(ct).ConfigureAwait(false);
 
         if (includeDevelopmentUsers)
         {
             await SeedDevelopmentFixtureAsync(ct).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Registers the shared sources the POC syncs (decision D12).
+    /// </summary>
+    /// <remarks>
+    /// Reference data rather than a development fixture, so it is seeded in every environment:
+    /// these rows are what a sync targets, and a source that is not registered cannot be
+    /// synced at all.
+    ///
+    /// The codes are the ones proven to return data by a count call, which is not a
+    /// formality - six sources appear under two or three codes disagreeing about themselves,
+    /// and `sbt_japan` returns nothing where `sbtjapan` returns 1,722. Shared, so their
+    /// vehicles land in the global catalog with a null TenantId.
+    /// </remarks>
+    private async Task SeedVehicleSourcesAsync(CancellationToken ct)
+    {
+        (string Code, string Name, string BaseUrl)[] sources =
+        [
+            ("sbtjapan", "SBT Japan", "https://www.sbtjapan.com"),
+            ("goonet_exchange", "Goo-net Exchange", "https://www.goo-net-exchange.com"),
+        ];
+
+        foreach (var (code, name, baseUrl) in sources)
+        {
+            var existing = await _db.VehicleSources
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(s => s.Code == code, ct)
+                .ConfigureAwait(false);
+
+            if (existing is not null)
+            {
+                continue;
+            }
+
+            _db.VehicleSources.Add(new VehicleSource
+            {
+                TenantId = null,
+                Name = name,
+                Code = code,
+                ProviderType = VehicleSourceProviderType.Carapis,
+                SourceType = VehicleSourceType.Api,
+                BaseUrl = baseUrl,
+                IsShared = true,
+                IsActive = true,
+            });
+        }
+
+        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
     }
 
     private async Task SeedPermissionsAsync(CancellationToken ct)
