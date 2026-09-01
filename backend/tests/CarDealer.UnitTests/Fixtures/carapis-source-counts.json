@@ -1,0 +1,12 @@
+{
+  "_comment": "Vehicle counts per candidate source, captured 2026-08-31 via ?source=<code>&page_size=1. This is the evidence D12's source selection rests on.",
+  "captured_at": "2026-08-31",
+  "counts": [
+    { "code": "sbtjapan",        "count": 1722, "availability": "on_demand", "newest_last_seen_at": "2026-07-30", "verdict": "usable - real volume, current" },
+    { "code": "goonet_exchange", "count": 921,  "availability": "live",      "newest_last_seen_at": "2026-07-30", "verdict": "usable - real volume, current" },
+    { "code": "tcv",             "count": 303,  "availability": "on_demand", "newest_last_seen_at": "2026-07-11", "verdict": "thin" },
+    { "code": "satjapan",        "count": 70,   "availability": "on_demand", "newest_last_seen_at": "2026-01-28", "verdict": "stub - stale by seven months" },
+    { "code": "beforward",       "count": 28,   "availability": "on_demand", "newest_last_seen_at": "2026-01-29", "verdict": "stub - stale by seven months" },
+    { "code": "sbt_japan",       "count": 0,    "availability": "on_demand", "newest_last_seen_at": null,         "verdict": "dead code - the underscored twin of sbtjapan returns nothing" }
+  ]
+}

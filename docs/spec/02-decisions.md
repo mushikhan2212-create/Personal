@@ -537,21 +537,39 @@ The `sources/` endpoint has been read. All three exporters the master prompt nam
 the earlier worry that Carapis might not reach the export trade was unfounded. The candidate
 set for the POC:
 
-| # | Code | Source | Availability | Note |
-| --- | --- | --- | --- | --- |
-| 1 | `sbtjapan` | SBT Japan | on_demand | **Confirmed returning rows.** Use this code, not `sbt_japan` |
-| 2 | `goonet_exchange` | Goo-net Exchange | **live** | The only live export-facing Japanese source |
-| 3 | `beforward` | BeForward | on_demand | Named in §3; the largest of these by volume |
-| 4 | `tcv` | TCV | on_demand | Named in §3 |
-| 5 | `satjapan` | SAT Japan | on_demand | Reserve; `royal_trading` and `nikkyo` also exist |
+Counts were then taken per source, and they decide it:
+
+| Code | Count | Newest record | Verdict |
+| --- | --- | --- | --- |
+| `sbtjapan` | **1,722** | 2026-07-30 | **In.** Real volume, current |
+| `goonet_exchange` | **921** | 2026-07-30 | **In.** Real volume, current |
+| `tcv` | 303 | 2026-07-11 | Thin |
+| `satjapan` | 70 | 2026-01-28 | Stub, stale by seven months |
+| `beforward` | 28 | 2026-01-29 | Stub, stale by seven months |
+| `sbt_japan` | **0** | — | Dead code |
+
+**The POC runs on `sbtjapan` and `goonet_exchange`.** Two sources, not five.
+
+BE FORWARD returning 28 vehicles — against the hundreds of thousands on its own site — and
+those 28 last seen in January, is what `on_demand` looks like before anyone has connected it:
+a frozen sample. TCV's 303 is better but still thin. Building the POC on those would measure
+the sample, not the source.
+
+`sbt_japan` returning 0 while `sbtjapan` returns 1,722 confirms the duplicate-code hazard is
+real and not theoretical.
 
 ### Cost accepted
 
-- **Four of the five are `on_demand`**, which the vendor defines as "connected per order".
-  Only `goonet_exchange` is `live`, and `sbtjapan` is known to return rows despite its flag.
-  Whether the other three yield anything without a commercial arrangement is unknown, so
-  **[O2](05-open-items.md#o2--carapis-licensing-gate) is now a blocker for the POC**, not a
-  Phase 1 formality. The POC runs with whichever of the five actually return data.
+- **Two sources, not the four or five this decision set out to find.** The intent stands and
+  the architecture is unchanged — adding BE FORWARD is one configuration line once it carries
+  data — but the POC measures two.
+- **[O2](05-open-items.md#o2--carapis-licensing-gate) is now concrete.** Reaching BE FORWARD,
+  TCV and SAT Japan at usable volume means a commercial conversation with Carapis about
+  connecting `on_demand` sources. That is a question with a price attached, not a legal
+  formality, and it belongs in the POC report as such.
+- **`availability` does not predict volume.** `sbtjapan` is flagged `on_demand` and has the
+  most data of any Japanese source; `goonet_exchange` is `live` and has less. The flag
+  describes provisioning, not content, so counts are the only reliable test.
 - **Source codes must be validated, not assumed.** Six sources appear under two or three codes
   disagreeing about their own region and availability — `sbtjapan` returns rows where
   `sbt_japan` may not. Every code in configuration is verified by a count call first; see

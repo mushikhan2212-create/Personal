@@ -1,0 +1,66 @@
+{
+  "_comment": "Real DETAIL response from GET /apix/catalog_api/vehicles/e35cbca7-ab36-4720-a171-627690b25da7/, captured 2026-08-31. This is the Japanese-exporter counterpart to the Korean encar fixture, and it differs in the one way that matters: vin and vehicle_no are EMPTY STRINGS, not populated. Photos trimmed from 42 to 3; everything else verbatim.",
+
+  "id": "e35cbca7-ab36-4720-a171-627690b25da7",
+  "source_code": "sbtjapan",
+  "brand_name": "Toyota", "brand_slug": "toyota",
+  "model_name": "Vitz", "model_slug": "vitz",
+  "trim": "HYBRID F", "generation": "", "year": 2017,
+
+  "price_usd": 4300,
+  "price_original": "4290.00",
+  "price_original_currency": "USD",
+  "original_msrp": null,
+
+  "mileage": 61000, "engine_cc": 1500, "seat_count": 5,
+  "fuel_type": "hybrid", "transmission": "auto", "body_type": "hatchback",
+  "color": "gray", "drive_type": "fwd",
+
+  "seller_type": "dealer", "region": "Nagoya", "source_location": null,
+
+  "has_accident": null, "has_simple_repair": null, "has_recall": null, "recall_fulfilled": null,
+  "warranty_type": "", "inspection_passed": true, "owner_count": null,
+  "is_new_vehicle": false, "is_verified": null,
+  "is_undervalued": true, "valuation_score": 0.9850505050505015,
+
+  "features": [],
+  "_description_note": "Steering side appears ONLY here, in free text: '**Steering:** Right-Hand Drive'. There is no steering field on the record.",
+  "description": "## 2017 Toyota Vitz - Efficient Hybrid Hatchback from Japan  ### Highlights  - Reliable Toyota hybrid powertrain with excellent fuel economy  - Just 61,000 km — low mileage for its age  - Right-hand drive configuration for compatible markets  ### Specifications  - **Year:** 2017  - **Mileage:** 61,000 km  - **Engine:** 1,500cc (1.5L) hybrid petrol  - **Transmission:** Automatic  - **Drive:** 2WD (Front-Wheel Drive)  - **Steering:** Right-Hand Drive  - **Seats:** 5  - **Location:** Nagoya, Japan",
+
+  "listing_url": "https://www.sbtjapan.com/used-cars/AO4106",
+  "listing_id": "AO4106",
+
+  "_identifier_note": "Empty string, NOT null. Normalisation must treat empty and whitespace as absent - hashing '' would give every VIN-less car an identical CanonicalHash and auto-merge the entire source into one vehicle.",
+  "vin": "",
+  "vehicle_no": "",
+
+  "is_available": true,
+  "availability_checked_at": null,
+  "first_seen_at": "2026-07-30T21:14:41Z",
+  "last_seen_at": "2026-07-30T21:14:41Z",
+  "status_changed_at": null,
+
+  "photos": [
+    { "url": "/media/vehicles/e35/cbc/e35cbca7-ab36-4720-a171-627690b25da7/c4c8caee370f46f18e7dcac13599343c.webp",
+      "thumb_url": "/media/vehicles/e35/cbc/e35cbca7-ab36-4720-a171-627690b25da7/c4c8caee370f46f18e7dcac13599343c.webp",
+      "original_url": "https://img.sbtjapan.com/img/carphoto/AO4106/normal/f.jpg",
+      "is_main": true, "photo_type": "exterior", "position": 0, "width": 640, "height": 480 },
+    { "url": "https://img.sbtjapan.com/img/carphoto/AO4106/normal/r.jpg",
+      "thumb_url": "https://img.sbtjapan.com/img/carphoto/AO4106/normal/r.jpg",
+      "original_url": "https://img.sbtjapan.com/img/carphoto/AO4106/normal/r.jpg",
+      "is_main": false, "photo_type": "exterior", "position": 1, "width": null, "height": null }
+  ],
+
+  "has_valuation": true, "has_llm_analysis": true,
+  "analysis": {
+    "price_status": "undervalued", "is_undervalued": true,
+    "percentile_rank": 19, "market_delta_pct": -29.6,
+    "estimated_price": 5558, "price_low": 4635, "price_high": 6480,
+    "confidence": 86.7, "actual_price": 4290,
+    "price_difference": 1268, "price_difference_pct": 29.6,
+    "comparable_count": 75,
+    "cohort_min_price": 1800, "cohort_max_price": 5500, "cohort_median_price": 3340,
+    "breakdown": { "base_price": "3340.00", "year_impact": "881.76", "mileage_impact": "1336.00", "options_impact": "0.00" },
+    "analysis_updated_at": "2026-08-06T08:45:33.262290Z"
+  }
+}

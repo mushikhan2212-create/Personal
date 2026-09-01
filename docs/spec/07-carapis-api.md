@@ -374,6 +374,61 @@ exception, so freshness cannot be read from this endpoint at all. Master prompt 
 POC to measure freshness, so it will have to be derived from `last_seen_at` on the vehicles
 themselves.
 
+## 5.4 Japanese stock has no VIN, and the empty string is a trap
+
+The Korean `encar` record in 5.2 carried a real VIN. The SBT Japan record does not:
+
+```json
+"vin": "",
+"vehicle_no": "",
+"generation": "",
+"warranty_type": ""
+```
+
+**Empty strings, not nulls.** That distinction is the most dangerous thing in this API.
+
+`CanonicalHash` is built from the first available strong identifier. Hash an empty string and
+**every VIN-less vehicle from the source gets the same hash**, and D3 auto-merges on exact hash
+equality — so a naive implementation would collapse all 1,722 SBT vehicles into one. The
+normalizer must treat empty and whitespace-only as **absent**, exactly as it treats null, and
+this deserves a test of its own rather than a trusted convention.
+
+### What this does to deduplication
+
+For Japanese export stock, rules 1 and 2 are both unavailable — no VIN, no chassis number.
+Rule 3 survives: `listing_id` is `AO4106`, the source's own stock number, which is a real lot
+number and appears in `listing_url` too.
+
+But rule 3 keys on **source plus lot number**, so it only ever matches within one source — and
+re-ingesting the same listing from the same source is already prevented by the unique index on
+`(TenantScope, VehicleSourceId, ExternalListingId)`. So rule 3 adds nothing the schema does not
+already do.
+
+The conclusion is worth stating plainly: **`CanonicalHash` cannot merge the same physical car
+across two Japanese exporters.** If SBT and TCV both list one car, nothing in the payload
+proves it, and D3 sends the pair to the review queue by design. That is D3 working as intended
+— it was written to be conservative precisely because a wrong merge is worse than a missed one
+— but it means the POC's dedup story for Japanese stock is the review queue, not auto-merge,
+and the report should say so rather than implying otherwise.
+
+### Steering side exists, but only in prose
+
+`SteeringSide` was called by [D5](02-decisions.md#d5--full-export-trade-canonical-model) the
+single most-used filter in this trade, and section 5.1 recorded it as absent. It is absent as a
+**field** — but the SBT description contains `**Steering:** Right-Hand Drive`.
+
+So it is recoverable by parsing free text, for this source, in this description template. That
+is worth doing for the POC and worth being honest about: it is a per-source heuristic on
+generated prose, not a contract, and it must record its own confidence. A vehicle whose
+steering side was inferred from a sentence is not the same fact as one the source declared.
+
+### Price on an exporter is already USD
+
+`price_original: "4290.00"` with `price_original_currency: "USD"` — SBT prices for export in
+USD natively, so the KRW conversion problem from 5.2 does not arise here. Note `price_usd`
+reads `4300` against an original of `4290`: rounded. Another reason to take `price_original` as
+the price and treat `price_usd` as indicative.
+
 ---
 
 ## 6. Mapping onto the canonical model
@@ -393,8 +448,8 @@ Straightforward:
 | `body_type`, `color` | `BodyType`, `ExteriorColor` |
 | `seat_count` | `Seats` |
 | `mileage` | `Mileage`, with `MileageUnit = Kilometers` (documented as km) |
-| `vin` | `Vin` |
-| `id` | `VehicleListings.ExternalListingId` - `listing_id` is not in the list projection |
+| `vin` | `Vin` — **empty string means absent**; see §5.4 |
+| `listing_id` | `VehicleListings.ExternalListingId` and `Vehicles.LotNumber` (detail only); fall back to `id` on the list path |
 | `listing_url` | `SourceUrl` - **detail endpoint only** |
 | `price_original` + `price_original_currency` | `Price` + `CurrencyCode` - **detail endpoint only** |
 | `price_usd` | `PriceBaseCurrency` with `BaseCurrencyCode = USD`, **only after a plausibility check** - see section 5.1 |
