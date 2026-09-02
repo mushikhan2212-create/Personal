@@ -41,6 +41,11 @@ docker compose up -d sqlserver redis
 dotnet run --project src/CarDealer.Api
 ```
 
+**This path serves on a different port.** `dotnet run` uses the `http` launch profile, which
+listens on **`http://localhost:5246`** — not the `5080` that `docker compose up` publishes.
+Take the port from the `Now listening on:` line the API prints at startup, and remember it
+when pointing the frontend at the API (see `frontend/README.md`).
+
 **Both dependencies must be running.** Unlike `docker compose up`, which injects connection
 strings as environment variables, this path reads them from `appsettings.Development.json` —
 which points `Redis` at `localhost:6379`, the port compose publishes.
@@ -48,7 +53,7 @@ which points `Redis` at `localhost:6379`, the port compose publishes.
 Confirm the cache is actually backed by Redis rather than the development fallback:
 
 ```bash
-curl -X POST 'http://localhost:5080/api/v1/diagnostics/cache-roundtrip?key=k&value=v' \
+curl -X POST 'http://localhost:5246/api/v1/diagnostics/cache-roundtrip?key=k&value=v' \
   -H "Authorization: Bearer <access token>"
 ```
 
@@ -99,11 +104,47 @@ overrides `ConnectionStrings:Default`.
 | `Jwt__RefreshTokenDays` | no | Default 14 |
 | `RateLimits__Auth__PermitLimit` | no | Auth requests per window per IP. Default 10; Development uses 200 |
 | `RateLimits__Auth__WindowSeconds` | no | Default 60 |
+| `Carapis__ApiKey` | no | Vehicle source credential. Absent, the platform runs normally with synchronization disabled: the sync endpoint answers 503 and search over already-synced data is unaffected. See below |
+| `Carapis__BaseUrl` | no | Default `https://api.carapis.com` |
 | `Storage__Local__RootPath` | no | Local file storage root. Default `./storage` |
 | `ASPNETCORE_ENVIRONMENT` | no | `Development`, `Staging`, `Production` |
 
 Rate limiting partitions by remote IP, so a whole office behind one NAT address shares a
 bucket. Deployments behind a proxy should raise the limit and rely on the proxy's own.
+
+### Supplying the vehicle source API key
+
+The key is a credential. It must never go in `appsettings*.json` or anywhere else that is
+committed — those files are in the repository, and a key in git history stays there. Pick the
+route that matches how you start the API:
+
+**`docker compose up`** — put it in `backend/.env`, which compose reads automatically and
+`.gitignore` excludes. Copy `backend/.env.example` and fill in `CARAPIS_API_KEY`.
+
+**`dotnet run`** — use user secrets, which are stored in your user profile rather than the
+working tree, and persist across sessions:
+
+```bash
+dotnet user-secrets --project src/CarDealer.Api set "Carapis:ApiKey" "<your key>"
+```
+
+Note the separator: `:` for user secrets, `__` for an environment variable. Both bind to the
+same setting.
+
+**A one-off run** — an environment variable, which lasts only for that shell:
+
+```powershell
+$env:Carapis__ApiKey = "<your key>"    # PowerShell
+```
+
+```bash
+export Carapis__ApiKey="<your key>"    # bash
+```
+
+To confirm the key was picked up, `POST /api/v1/vehicle-sources/{code}/sync`. A 503 means no
+provider was configured — the key did not reach the app. Anything else means it did.
+
+Rotate the key if it has ever been pasted into a chat window, a ticket, or a commit.
 
 ## Migrations
 

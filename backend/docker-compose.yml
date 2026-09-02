@@ -54,6 +54,12 @@ services:
       # Local-only value. Any non-development environment must supply this from a secret
       # store - see docs/spec/06-phase-0-acceptance.md criterion I1.
       Jwt__SigningKey: "${JWT_SIGNING_KEY:-local-development-signing-key-not-for-any-other-environment}"
+
+      # The vehicle source credential, passed through from the host so it never lands in this
+      # file or in appsettings. Set CARAPIS_API_KEY in backend/.env (git-ignored) or export it
+      # before `docker compose up`. Left empty the platform runs normally with sync disabled:
+      # the sync endpoint answers 503 and search over already-synced data is unaffected.
+      Carapis__ApiKey: "${CARAPIS_API_KEY:-}"
     ports:
       - "5080:8080"
     healthcheck:
