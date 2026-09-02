@@ -9,24 +9,48 @@ npm install
 npm run dev          # http://localhost:5173
 ```
 
-The dev server proxies `/api` to the backend, so the browser makes same-origin requests and
-the API needs no CORS configuration.
+Start the backend first — in Visual Studio, press F5 (the `http` or `https` profile; either
+works). Then open http://localhost:5173.
 
-### Pointing it at your backend
+### Why the network tab shows localhost:5173
 
-The proxy target defaults to `http://localhost:5080`, which is the port `docker compose up`
-publishes. **`dotnet run` uses a different port** — its launch profile listens on `5246`. If
-you start the API that way, tell the frontend:
+Requests appear as `POST http://localhost:5173/api/v1/auth/login` — the dev server's own
+origin, not the API's port. **That is correct.** The page calls its own origin and Vite
+forwards everything under `/api` to the backend server-side. The browser never talks to the
+API directly, which is why the backend needs no CORS configuration.
+
+The consequence worth knowing: **a 500 from localhost:5173 usually means the proxy could not
+reach the backend**, not that the backend rejected your request. The dev server's console says
+which — it prints the target it is using at startup, and an explicit message when it cannot
+connect.
+
+### Setting your backend port
+
+The port is at the top of `vite.config.ts`, as `DEFAULT_API_URL`:
+
+| How you start the API | Port |
+| --- | --- |
+| **Visual Studio, F5** | **5246** — the default |
+| `docker compose up` | 5080 |
+
+Take it from the `Now listening on: http://localhost:____` line the API prints at startup.
+Change it in `vite.config.ts`, or set `VITE_API_URL` in `.env.local` to avoid editing a
+tracked file:
 
 ```bash
-cp .env.example .env.local     # then set VITE_API_URL=http://localhost:5246
+cp .env.example .env.local
 ```
 
-Restart `npm run dev` after changing it — Vite reads the proxy config at startup only.
+**Restart `npm run dev` after changing either** — Vite reads its config once, at startup. The
+startup banner then confirms the target:
 
-If in doubt, use the `Now listening on:` line the API prints when it starts. When the proxy
-cannot reach the backend the dev server logs it explicitly, rather than leaving you with an
-empty grid and no explanation.
+```
+  API proxy: /api -> http://localhost:5246
+```
+
+Use the `http://` address even when Visual Studio also starts an `https://` listener. The
+https port serves a self-signed certificate the proxy would reject, and Development does not
+redirect http to https, so plain http is both simpler and fully working.
 
 ## Signing in
 

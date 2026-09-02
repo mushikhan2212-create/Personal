@@ -32,19 +32,25 @@ Then open **<http://localhost:5080/swagger>**.
 On startup the API applies migrations and seeds reference data plus, outside Production, the
 development fixture below.
 
-### Running the API from the CLI instead
+### Running from Visual Studio, or the CLI
 
-Useful when you want to attach a debugger. Start the dependencies only:
+The usual debugging path. Start the dependencies only, then press F5 in Visual Studio (or run
+the CLI command below):
 
 ```bash
 docker compose up -d sqlserver redis
 dotnet run --project src/CarDealer.Api
 ```
 
-**This path serves on a different port.** `dotnet run` uses the `http` launch profile, which
-listens on **`http://localhost:5246`** — not the `5080` that `docker compose up` publishes.
-Take the port from the `Now listening on:` line the API prints at startup, and remember it
-when pointing the frontend at the API (see `frontend/README.md`).
+**This path serves on a different port.** Visual Studio and `dotnet run` both use the launch
+profiles in `Properties/launchSettings.json`, which listen on **`http://localhost:5246`** (the
+`https` profile adds `https://localhost:7241`) — not the `5080` that `docker compose up`
+publishes. The frontend defaults to 5246 for exactly this reason; see `frontend/README.md` if
+you change it.
+
+Point the frontend at the **http** address even when the https listener is also running: its
+certificate is self-signed and Development does not redirect http to https, so plain http is
+the simpler working choice.
 
 **Both dependencies must be running.** Unlike `docker compose up`, which injects connection
 strings as environment variables, this path reads them from `appsettings.Development.json` —
