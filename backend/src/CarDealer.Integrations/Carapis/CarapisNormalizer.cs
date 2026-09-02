@@ -18,25 +18,11 @@ namespace CarDealer.Integrations.Carapis;
 /// evidence behind it. The short version: blanks are absent, price_usd is not trusted, and
 /// nothing is inferred from a field the source did not populate.
 /// </remarks>
-public sealed class CarapisNormalizer
+public sealed class CarapisNormalizer : IVehicleRecordNormalizer
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    /// <summary>Result of normalizing one record, with what could not be mapped made explicit.</summary>
-    public sealed record NormalizedVehicle
-    {
-        public required Vehicle Vehicle { get; init; }
-
-        public required VehicleListing Listing { get; init; }
-
-        public required IReadOnlyList<VehicleImage> Images { get; init; }
-
-        /// <summary>
-        /// Facts the source did not state and that were inferred from free text. Recorded so a
-        /// derived value is never mistaken for a declared one.
-        /// </summary>
-        public IReadOnlyList<string> InferredFields { get; init; } = [];
-    }
+    public VehicleSourceProviderType ProviderType => VehicleSourceProviderType.Carapis;
 
     public NormalizedVehicle? Normalize(RawVehicleRecord record, long vehicleSourceId, string? mediaBaseUrl = null)
     {

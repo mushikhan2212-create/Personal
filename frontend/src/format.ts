@@ -15,3 +15,25 @@ export function formatUtc(value: string | null): string {
 
   return Number.isNaN(parsed.getTime()) ? '—' : parsed.toLocaleString();
 }
+
+/**
+ * How old a record is, in days, or null when the timestamp is unusable.
+ *
+ * Data age is shown on every card because invisible staleness is what made the previous source
+ * unusable: it published each listing once and never revisited, so a car sold six weeks ago
+ * still read as for sale and nothing on screen said otherwise. Stale data a user can see is a
+ * far smaller problem than stale data they cannot.
+ */
+export function ageInDays(value: string | null): number | null {
+  if (!value) return null;
+
+  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value);
+  const parsed = new Date(hasZone ? value : `${value}Z`);
+
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  return Math.floor((Date.now() - parsed.getTime()) / 86_400_000);
+}
+
+/** Past this, a listing is old enough that its availability should not be trusted. */
+export const STALE_AFTER_DAYS = 14;

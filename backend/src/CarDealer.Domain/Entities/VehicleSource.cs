@@ -44,6 +44,22 @@ public class VehicleSource : AuditableEntity, IOptionallyTenantScoped
 
     public bool IsActive { get; set; } = true;
 
+    /// <summary>
+    /// What this source is permitted to bring into the catalog, as JSON. Null means no limit.
+    /// </summary>
+    /// <remarks>
+    /// On the source rather than on <see cref="VehicleSourceConfiguration"/>, which is
+    /// tenant-scoped, because ingestion scope is a property of the catalog and not of a tenant.
+    /// A shared source feeds the global catalog that every tenant reads, so letting one
+    /// tenant's preference decide what gets ingested would silently change what the others see.
+    /// A tenant narrowing their own view is a search filter, which is a different thing.
+    ///
+    /// This is master prompt section 18's filter-and-quota requirement in the same form
+    /// decision D12 applies to Carapis: an explicit allow-list, applied before anything is
+    /// written, with what it excluded reported rather than dropped in silence.
+    /// </remarks>
+    public string? IngestionFilterJson { get; set; }
+
     public ICollection<VehicleSourceConfiguration> Configurations { get; set; }
         = new List<VehicleSourceConfiguration>();
 }

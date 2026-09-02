@@ -1,5 +1,6 @@
 import { Card, Space, Tag, Tooltip, Typography } from 'antd';
 import type { PriceType, VehicleSummary } from '../api/types';
+import { STALE_AFTER_DAYS, ageInDays, formatUtc } from '../format';
 
 /** Incoterms read as codes in this trade, not as prose. */
 const PRICE_TYPE_LABEL: Record<PriceType, string> = {
@@ -27,6 +28,8 @@ const formatMoney = (amount: number | null, currency: string | null): string => 
 
 export function VehicleCard({ vehicle }: { vehicle: VehicleSummary }) {
   const title = [vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'Unidentified vehicle';
+  const age = ageInDays(vehicle.lastSeenAtUtc);
+  const isStale = age !== null && age > STALE_AFTER_DAYS;
 
   return (
     <Card
@@ -92,6 +95,23 @@ export function VehicleCard({ vehicle }: { vehicle: VehicleSummary }) {
             Your price: {formatMoney(vehicle.tenantPrice, vehicle.tenantCurrencyCode)}
           </Typography.Text>
         )}
+
+        {/* How old this listing is. Shown always, not only when stale: a price and an
+            availability are only worth what their date is worth, and the source that
+            preceded this one froze both at first capture without ever saying so. */}
+        <Tooltip title={`Last confirmed by the source: ${formatUtc(vehicle.lastSeenAtUtc)}`}>
+          <Typography.Text
+            type={isStale ? 'warning' : 'secondary'}
+            style={{ fontSize: 12 }}
+          >
+            {age === null
+              ? 'Age unknown'
+              : age <= 0
+                ? 'Seen today'
+                : `Seen ${age} day${age === 1 ? '' : 's'} ago`}
+            {isStale && ' — may no longer be available'}
+          </Typography.Text>
+        </Tooltip>
 
         {/* Attribution is a POC acceptance criterion, not decoration. */}
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>

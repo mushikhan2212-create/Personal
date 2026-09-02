@@ -4,6 +4,7 @@ using CarDealer.Application.VehicleSources;
 using CarDealer.Infrastructure.Search;
 using CarDealer.Infrastructure.Sync;
 using CarDealer.Integrations.Carapis;
+using CarDealer.Integrations.FileImport;
 using CarDealer.Application.Auth;
 using CarDealer.Infrastructure.Audit;
 using CarDealer.Infrastructure.Auth;
@@ -113,7 +114,14 @@ public static class DependencyInjection
             services.AddScoped<IVehicleSourceCatalogProvider>(sp => sp.GetRequiredService<CarapisVehicleProvider>());
         }
 
+        // Normalizers are registered unconditionally and keyed by provider type inside the
+        // sync service. Unlike a provider, a normalizer needs no credentials and no network -
+        // it only reads payloads - so there is nothing to configure and no reason to withhold
+        // one. The import path in particular must work with no API key set at all.
         services.AddScoped<CarapisNormalizer>();
+        services.AddScoped<IVehicleRecordNormalizer>(sp => sp.GetRequiredService<CarapisNormalizer>());
+        services.AddScoped<IVehicleRecordNormalizer, ImportNormalizer>();
+
         services.AddScoped<VehicleSyncService>();
     }
 

@@ -25,6 +25,7 @@ Schema consequences are in [`04-schema-delta.md`](04-schema-delta.md).
 | [D10](#d10--phase-0-is-backend-only-swagger-is-the-test-surface) | Phase 0 is backend-only; Swagger is the test surface | Accepted |
 | [D11](#d11--net-10-not-net-8) | .NET 10, not .NET 8 (**amends §4**) | Accepted |
 | [D12](#d12--the-poc-syncs-japanese-exporters-only) | The POC syncs Japanese exporters only (**narrows §3**) | Accepted |
+| [D13](#d13--ingestion-is-source-agnostic-and-the-platform-does-not-scrape) | Ingestion is source-agnostic and the platform does not scrape (**supersedes part of D12**) | Accepted |
 
 ---
 
@@ -602,3 +603,79 @@ background job library licensing.
 
 Phase 0 acceptance criteria were previously open and are now closed by
 [`06-phase-0-acceptance.md`](06-phase-0-acceptance.md).
+
+## D13 — Ingestion is source-agnostic and the platform does not scrape
+
+### Problem
+
+Carapis cannot carry the POC, and the reason is structural rather than a matter of degree.
+
+Every record it returns has `first_seen_at` equal to `last_seen_at`:
+
+```
+sbtjapan   first=2026-07-08  last=2026-07-08
+goonet     first=2026-07-07  last=2026-07-07
+encar      first=2026-07-24  last=2026-07-24
+```
+
+It sees a listing once and never revisits it. So `is_available` is frozen at the moment of
+capture and can never become false: a car sold six weeks ago still reads as for sale, and will
+read that way forever. The records captured on 2026-08-31 were last seen between 2026-07-04 and
+2026-07-30 — 32 to 58 days old — which matches the "updated 33 days ago" notice on the
+provider's own site.
+
+Coverage compounds it. `sbtjapan` returns 1,722 vehicles and `goonet_exchange` 921, against
+catalogues of hundreds of thousands, and the list endpoint omits VIN, `listing_id` and
+`price_original` entirely (see [07-carapis-api.md](07-carapis-api.md) §5.1).
+
+The obvious response — scrape the exporters directly — is ruled out by this project's own
+requirements. Master prompt §6: *"Never bypass authentication, CAPTCHAs, anti-bot controls or
+other protections. Do not make scraping the default integration strategy."* §18 lists **"No
+unauthorized scraping or bypassing access controls"** among the explicit exclusions, and §6's
+future adapters are named "BE FORWARD **direct authorized** provider", not "BE FORWARD
+scraper".
+
+### Decision
+
+**The platform accepts vehicle data; it does not go and take it.** Ingestion is source-agnostic
+behind two abstractions — `IVehicleSourceSyncProvider` for fetching and
+`IVehicleRecordNormalizer` for interpreting — and a documented JSON import format
+([08-import-format.md](08-import-format.md)) is the first path that is not an API.
+
+Where a file's contents came from is the operator's decision and sits outside this system: an
+authorized partner feed, a dealer's own export, or a tool the operator runs and owns.
+
+### Why
+
+- **It is the only option that is correct today and still correct later.** An authorized BE
+  FORWARD feed, when it exists, is a provider implementing the same interface. Nothing built
+  now is thrown away.
+- **The legal surface stays out of the product.** A SaaS that redistributes scraped stock
+  carries materially more exposure than a personal tool, and that exposure would be designed
+  into the software rather than chosen deliberately.
+- **Scrapers fail silently.** A markup change turns into an empty catalog, which this project
+  has already learned is the worst failure mode available: 400 vehicles returning no search
+  results looked exactly like a healthy 200.
+- **It unblocks the POC immediately.** Fresh data can be loaded today rather than after a
+  commercial negotiation.
+
+### What this changes about D12
+
+[D12](#d12--the-poc-syncs-japanese-exporters-only) restricted the POC to Japanese exporters and
+named `sbtjapan` and `goonet_exchange` as the two sources. That still governs **Carapis**
+synchronization and its permitted-source guard is unchanged.
+
+It no longer describes ingestion as a whole. The catalog can now be fed from any registered
+source, and §18's filter-and-quota requirement is met per source by
+`VehicleSources.IngestionFilterJson` — an allow-list over makes, models, destination markets
+and model year, with a record ceiling. Records outside it are counted and reported as
+`skippedOutOfScope`, never silently dropped: a filter that quietly discards half a file is
+indistinguishable from a file that was half empty.
+
+### What this does not do
+
+- It does not authorize scraping by another route. The exclusion in §18 stands.
+- It does not make the imported data trustworthy by itself. Data is only as good as its
+  producer, which is why `lastSeenAtUtc` is the one field the format refuses to default and why
+  every vehicle card shows how old its listing is.
+

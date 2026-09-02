@@ -3,7 +3,7 @@ using CarDealer.Application.VehicleSources;
 using CarDealer.Domain.Entities;
 using CarDealer.Domain.Enums;
 using CarDealer.Infrastructure.Persistence;
-using CarDealer.Integrations.Carapis;
+using CarDealer.Integrations.FileImport;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -34,6 +34,26 @@ public sealed record VehicleSyncOptions
     /// hundred times as much. The POC report needs both numbers, so the flag is measured.
     /// </remarks>
     public bool FetchDetail { get; init; }
+
+    /// <summary>
+    /// A provider supplied by the caller, overriding whatever is registered in the container.
+    /// </summary>
+    /// <remarks>
+    /// This is how a file import runs: the endpoint wraps the uploaded document in a provider
+    /// and hands it over, so the import reuses paging, deduplication, upsert and job accounting
+    /// rather than growing a second copy of all of it. Null for an ordinary sync.
+    /// </remarks>
+    public IVehicleSourceSyncProvider? Provider { get; init; }
+
+    /// <summary>
+    /// Parse, validate and count, then roll everything back instead of committing.
+    /// </summary>
+    /// <remarks>
+    /// A malformed file should cost five seconds and a report, not a half-finished import to
+    /// unpick. The counts returned are real - the records were genuinely normalized and
+    /// matched against the catalog - only the writes are discarded.
+    /// </remarks>
+    public bool DryRun { get; init; }
 }
 
 /// <summary>
@@ -64,6 +84,16 @@ public sealed record VehicleSyncResult
     /// </summary>
     public int WithoutStrongIdentifier { get; init; }
 
+    /// <summary>
+    /// Records the source offered that fell outside this source's permitted coverage.
+    /// </summary>
+    /// <remarks>
+    /// Reported rather than silently dropped. A coverage filter that quietly discards half a
+    /// file is indistinguishable from a file that was half empty, and the difference matters
+    /// when someone is asking why their import produced fewer cars than they expected.
+    /// </remarks>
+    public int SkippedOutOfScope { get; init; }
+
     public int PagesFetched { get; init; }
 
     public int RequestCount { get; init; }
@@ -90,7 +120,7 @@ public sealed class VehicleSyncService
     private readonly CarDealerDbContext _db;
     private readonly IVehicleSourceSyncProvider? _provider;
     private readonly IVehicleSourceDetailProvider? _detailProvider;
-    private readonly CarapisNormalizer _normalizer;
+    private readonly IReadOnlyDictionary<VehicleSourceProviderType, IVehicleRecordNormalizer> _normalizers;
     private readonly IDateTimeProvider _clock;
     private readonly ILogger<VehicleSyncService> _logger;
 
@@ -106,7 +136,7 @@ public sealed class VehicleSyncService
     /// </remarks>
     public VehicleSyncService(
         CarDealerDbContext db,
-        CarapisNormalizer normalizer,
+        IEnumerable<IVehicleRecordNormalizer> normalizers,
         IDateTimeProvider clock,
         ILogger<VehicleSyncService> logger,
         IVehicleSourceSyncProvider? provider = null,
@@ -114,7 +144,12 @@ public sealed class VehicleSyncService
     {
         _db = db;
         _provider = provider;
-        _normalizer = normalizer;
+
+        // Keyed by provider type rather than by source code: one normalizer serves every
+        // source of a kind, so registering a third Japanese exporter that publishes the import
+        // format costs a row in VehicleSources and no code at all.
+        _normalizers = normalizers.ToDictionary(n => n.ProviderType);
+
         _clock = clock;
         _logger = logger;
         _detailProvider = detailProvider;
@@ -125,7 +160,12 @@ public sealed class VehicleSyncService
 
     public async Task<VehicleSyncResult> RunAsync(VehicleSyncOptions options, CancellationToken ct = default)
     {
-        if (_provider is null)
+        // An import supplies its own provider, wrapped around the uploaded file. Everything
+        // downstream - paging, dedup, upsert, job accounting - is the same either way, which is
+        // the point of running an import through this service rather than beside it.
+        var provider = options.Provider ?? _provider;
+
+        if (provider is null)
         {
             throw new InvalidOperationException(
                 "No vehicle source provider is registered. Configure Carapis:ApiKey to enable "
@@ -141,6 +181,26 @@ public sealed class VehicleSyncService
             ?? throw new InvalidOperationException(
                 $"No VehicleSource is registered with code '{options.SourceCode}'. "
                 + "Register it before syncing - the code must be one proven to return data.");
+
+        // A source whose payloads nothing can read is a configuration error, not an empty
+        // catalog. Failing loudly here beats importing a file and reporting zero records.
+        if (!_normalizers.TryGetValue(source.ProviderType, out var normalizer))
+        {
+            throw new InvalidOperationException(
+                $"No normalizer is registered for provider type '{source.ProviderType}', which "
+                + $"source '{options.SourceCode}' declares. Register an IVehicleRecordNormalizer "
+                + "for it before syncing.");
+        }
+
+        // Parsed before the job row exists: an unreadable filter should stop the run outright
+        // rather than leave a Running job behind for something that never started.
+        var coverage = IngestionFilter.Parse(source.IngestionFilterJson);
+
+        if (options.DryRun)
+        {
+            return await DryRunAsync(options, provider, normalizer, source, coverage, startedAt, ct)
+                .ConfigureAwait(false);
+        }
 
         var job = new SyncJob
         {
@@ -159,6 +219,7 @@ public sealed class VehicleSyncService
         var failed = 0;
         var autoMerged = 0;
         var withoutIdentifier = 0;
+        var outOfScope = 0;
         var pagesFetched = 0;
         var requestCount = 0;
         string? error = null;
@@ -167,7 +228,7 @@ public sealed class VehicleSyncService
         {
             for (var pageNumber = 1; pageNumber <= options.MaxPages; pageNumber++)
             {
-                var page = await _provider.FetchPageAsync(
+                var page = await provider.FetchPageAsync(
                     new VehicleSourceQuery
                     {
                         SourceCode = options.SourceCode,
@@ -199,9 +260,34 @@ public sealed class VehicleSyncService
                         }
                     }
 
+                    if (coverage is not null && !Permits(coverage, record, normalizer, source.Id))
+                    {
+                        outOfScope++;
+
+                        _db.SyncJobItems.Add(new SyncJobItem
+                        {
+                            SyncJobId = job.Id,
+                            ExternalListingId = record.ExternalId,
+                            Status = SyncJobItemStatus.Skipped,
+                            ErrorMessage = "Outside this source's permitted ingestion coverage.",
+                            ProcessedAtUtc = _clock.UtcNow,
+                        });
+
+                        continue;
+                    }
+
+                    if (coverage?.MaxRecords is { } cap && created + updated + autoMerged >= cap)
+                    {
+                        // The quota master prompt section 18 requires. Stopping mid-page is
+                        // correct: the ceiling is on what enters the catalog, not on what a
+                        // file happens to contain.
+                        outOfScope += 1;
+                        continue;
+                    }
+
                     try
                     {
-                        var outcome = await UpsertAsync(record, source.Id, job.Id, ct).ConfigureAwait(false);
+                        var outcome = await UpsertAsync(record, normalizer, source.Id, job.Id, ct).ConfigureAwait(false);
 
                         switch (outcome)
                         {
@@ -215,7 +301,7 @@ public sealed class VehicleSyncService
                         {
                             // Counted separately from the outcome: a record can be created and
                             // still carry no identifier, and that is the number worth knowing.
-                            withoutIdentifier += await HasNoStrongIdentifierAsync(record, source.Id) ? 1 : 0;
+                            withoutIdentifier += await HasNoStrongIdentifierAsync(record, normalizer, source.Id) ? 1 : 0;
                         }
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
@@ -284,6 +370,7 @@ public sealed class VehicleSyncService
             Failed = failed,
             AutoMerged = autoMerged,
             WithoutStrongIdentifier = withoutIdentifier,
+            SkippedOutOfScope = outOfScope,
             PagesFetched = pagesFetched,
             RequestCount = requestCount,
             Elapsed = completedAt - startedAt,
@@ -291,12 +378,165 @@ public sealed class VehicleSyncService
         };
     }
 
+    /// <summary>Whether a record falls inside the source's permitted coverage.</summary>
+    /// <remarks>
+    /// Normalizes to decide, rather than reading the raw payload, so one filter works for every
+    /// source shape - the whole point of having a canonical model. The cost is normalizing a
+    /// rejected record once, which is cheaper than the request that fetched it.
+    /// </remarks>
+    private static bool Permits(
+        IngestionFilter filter, RawVehicleRecord record, IVehicleRecordNormalizer normalizer, long sourceId)
+    {
+        var normalized = normalizer.Normalize(record, sourceId);
+
+        if (normalized is null)
+        {
+            // Unreadable, not out of scope. Let the upsert path record it as a failed item so
+            // the reason it was dropped is the true one.
+            return true;
+        }
+
+        return filter.Permits(
+            normalized.Vehicle.Make,
+            normalized.Vehicle.Model,
+            normalized.Vehicle.ModelYear,
+            ImportNormalizer.DestinationsOf(record));
+    }
+
+    /// <summary>
+    /// Parses, filters and counts without writing anything.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not a transaction that rolls back: the DbContext is configured with
+    /// EnableRetryOnFailure, and an explicit transaction under a retrying execution strategy
+    /// has to be wrapped in one, which would restructure the whole run for a path that never
+    /// needs to write. Reading is enough to answer what a dry run is asked - how many records
+    /// are readable, how many are in scope, and how many already exist.
+    ///
+    /// No SyncJob row is created either. A run that wrote nothing did not happen, and leaving
+    /// job rows behind would corrupt the "last synced" reporting on the sources screen.
+    /// </remarks>
+    private async Task<VehicleSyncResult> DryRunAsync(
+        VehicleSyncOptions options,
+        IVehicleSourceSyncProvider provider,
+        IVehicleRecordNormalizer normalizer,
+        VehicleSource source,
+        IngestionFilter? coverage,
+        DateTime startedAt,
+        CancellationToken ct)
+    {
+        var readable = 0;
+        var unreadable = 0;
+        var outOfScope = 0;
+        var wouldCreate = 0;
+        var wouldUpdate = 0;
+        var withoutIdentifier = 0;
+        var pagesFetched = 0;
+        string? error = null;
+
+        try
+        {
+            for (var pageNumber = 1; pageNumber <= options.MaxPages; pageNumber++)
+            {
+                var page = await provider.FetchPageAsync(
+                    new VehicleSourceQuery
+                    {
+                        SourceCode = options.SourceCode,
+                        Page = pageNumber,
+                        PageSize = options.PageSize,
+                    },
+                    ct).ConfigureAwait(false);
+
+                pagesFetched++;
+
+                foreach (var record in page.Records)
+                {
+                    var normalized = normalizer.Normalize(record, source.Id);
+
+                    if (normalized is null)
+                    {
+                        unreadable++;
+                        continue;
+                    }
+
+                    readable++;
+
+                    if (coverage is not null && !coverage.Permits(
+                            normalized.Vehicle.Make,
+                            normalized.Vehicle.Model,
+                            normalized.Vehicle.ModelYear,
+                            ImportNormalizer.DestinationsOf(record)))
+                    {
+                        outOfScope++;
+                        continue;
+                    }
+
+                    if (normalized.Vehicle.CanonicalHash is null)
+                    {
+                        withoutIdentifier++;
+
+                        // Nothing to match on, so it could only ever be a new row.
+                        wouldCreate++;
+                        continue;
+                    }
+
+                    var exists = await _db.Vehicles
+                        .IgnoreQueryFilters()
+                        .AnyAsync(v => v.CanonicalHash == normalized.Vehicle.CanonicalHash, ct)
+                        .ConfigureAwait(false);
+
+                    if (exists)
+                    {
+                        wouldUpdate++;
+                    }
+                    else
+                    {
+                        wouldCreate++;
+                    }
+                }
+
+                if (!page.HasNextPage)
+                {
+                    break;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            error = ex.Message;
+            _logger.LogError(ex, "Dry run for {Source} failed.", options.SourceCode);
+        }
+
+        return new VehicleSyncResult
+        {
+            // Zero rather than a real id, because no job was recorded. A caller storing this
+            // would be storing a reference to nothing.
+            SyncJobId = 0,
+            Status = error is not null ? SyncJobStatus.Failed : SyncJobStatus.Succeeded,
+            TotalRecords = readable + unreadable,
+            Created = wouldCreate,
+            Updated = wouldUpdate,
+            Failed = unreadable,
+            AutoMerged = 0,
+            WithoutStrongIdentifier = withoutIdentifier,
+            SkippedOutOfScope = outOfScope,
+            PagesFetched = pagesFetched,
+            RequestCount = 0,
+            Elapsed = _clock.UtcNow - startedAt,
+            ErrorMessage = error,
+        };
+    }
+
     private enum UpsertOutcome { Created, Updated, MergedIntoExisting, Skipped }
 
     private async Task<UpsertOutcome> UpsertAsync(
-        RawVehicleRecord record, long sourceId, long syncJobId, CancellationToken ct)
+        RawVehicleRecord record,
+        IVehicleRecordNormalizer normalizer,
+        long sourceId,
+        long syncJobId,
+        CancellationToken ct)
     {
-        var normalized = _normalizer.Normalize(record, sourceId);
+        var normalized = normalizer.Normalize(record, sourceId);
 
         if (normalized is null)
         {
@@ -394,9 +634,10 @@ public sealed class VehicleSyncService
         return UpsertOutcome.Created;
     }
 
-    private Task<bool> HasNoStrongIdentifierAsync(RawVehicleRecord record, long sourceId)
+    private Task<bool> HasNoStrongIdentifierAsync(
+        RawVehicleRecord record, IVehicleRecordNormalizer normalizer, long sourceId)
     {
-        var normalized = _normalizer.Normalize(record, sourceId);
+        var normalized = normalizer.Normalize(record, sourceId);
         return Task.FromResult(normalized?.Vehicle.CanonicalHash is null);
     }
 

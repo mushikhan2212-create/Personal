@@ -5,6 +5,7 @@ using CarDealer.Domain.Enums;
 using CarDealer.Infrastructure.Persistence;
 using CarDealer.Infrastructure.Sync;
 using CarDealer.Integrations.Carapis;
+using CarDealer.Integrations.FileImport;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -94,7 +95,7 @@ public sealed class VehicleSyncServiceTests : IClassFixture<ApiFactory>
 
         var service = new VehicleSyncService(
             db,
-            new CarapisNormalizer(),
+            [new CarapisNormalizer(), new ImportNormalizer()],
             scope.ServiceProvider.GetRequiredService<IDateTimeProvider>(),
             NullLogger<VehicleSyncService>.Instance,
             provider);

@@ -1,9 +1,11 @@
 using Asp.Versioning;
 using CarDealer.Api.Authorization;
+using CarDealer.Application.Abstractions;
 using CarDealer.Domain.Entities;
 using CarDealer.Domain.Enums;
 using CarDealer.Infrastructure.Persistence;
 using CarDealer.Infrastructure.Sync;
+using CarDealer.Integrations.FileImport;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,16 +17,32 @@ namespace CarDealer.Api.Controllers;
 [Route("api/v{version:apiVersion}/vehicle-sources")]
 public sealed class VehicleSourcesController : ControllerBase
 {
+    /// <summary>
+    /// Ceiling on an uploaded import, in bytes.
+    /// </summary>
+    /// <remarks>
+    /// 64 MB holds well over a hundred thousand vehicles at the format's typical size, which is
+    /// far more than the bounded sample this phase deals in - and the point of a ceiling is
+    /// that an unbounded upload is a denial-of-service vector, not that any real file is close
+    /// to it.
+    /// </remarks>
+    private const long MaxImportBytes = 64L * 1024 * 1024;
+
     private readonly CarDealerDbContext _db;
     private readonly VehicleSyncService _sync;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IFileStorage _storage;
 
     public VehicleSourcesController(
-        CarDealerDbContext db, VehicleSyncService sync, IServiceScopeFactory scopeFactory)
+        CarDealerDbContext db,
+        VehicleSyncService sync,
+        IServiceScopeFactory scopeFactory,
+        IFileStorage storage)
     {
         _db = db;
         _sync = sync;
         _scopeFactory = scopeFactory;
+        _storage = storage;
     }
 
     /// <summary>Lists the sources this tenant can see: shared ones, plus its own.</summary>
@@ -166,6 +184,131 @@ public sealed class VehicleSourcesController : ControllerBase
 
             result.PagesFetched,
             result.RequestCount,
+            elapsedMs = (int)result.Elapsed.TotalMilliseconds,
+            result.ErrorMessage,
+        });
+    }
+
+    /// <summary>
+    /// Imports vehicles from a JSON document (docs/spec/08-import-format.md).
+    /// </summary>
+    /// <remarks>
+    /// The platform does not fetch from exporter websites - master prompt sections 6 and 18
+    /// rule that out, and decision D13 records why. It accepts data instead, and where that
+    /// data came from is the operator's concern: an authorized partner feed, a dealer's own
+    /// export, or a tool run outside this system.
+    ///
+    /// The import runs through the same <see cref="VehicleSyncService"/> as an API sync, so
+    /// deduplication, upsert, per-item failure handling and job accounting behave identically.
+    /// The only difference is where the records come from.
+    ///
+    /// Use <c>dryRun=true</c> first on an unfamiliar file. It reports exactly what a real
+    /// import would do - readable records, how many are in scope, how many already exist -
+    /// and writes nothing.
+    /// </remarks>
+    [HttpPost("{code}/import")]
+    [HasPermission(Permissions.VehiclesSync)]
+    [RequestSizeLimit(MaxImportBytes)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Import(
+        string code,
+        IFormFile file,
+        [FromQuery] bool dryRun = false,
+        CancellationToken ct = default)
+    {
+        if (file is null || file.Length == 0)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "No file was uploaded.",
+                Detail = "Post the document as multipart/form-data under the field name 'file'.",
+                Status = StatusCodes.Status400BadRequest,
+            });
+        }
+
+        var source = await _db.VehicleSources
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(s => s.Code == code, ct)
+            .ConfigureAwait(false);
+
+        if (source is null)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = $"No vehicle source is registered with code '{code}'.",
+                Detail = "Register the source before importing to it, so its listings have "
+                    + "something to be attributed to.",
+                Status = StatusCodes.Status404NotFound,
+            });
+        }
+
+        JsonFileVehicleProvider provider;
+        string? storageReference = null;
+
+        try
+        {
+            if (!dryRun)
+            {
+                // Kept before parsing so a file that fails to import can be re-run against the
+                // exact bytes that failed, rather than a re-export that may differ.
+                await using var toStore = file.OpenReadStream();
+                storageReference = await _storage
+                    .SaveAsync("vehicle-imports", $"{code}-{Guid.NewGuid():N}.json", toStore, ct)
+                    .ConfigureAwait(false);
+            }
+
+            await using var stream = file.OpenReadStream();
+            provider = JsonFileVehicleProvider.Read(stream, code);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // A document that cannot be read at all is the caller's mistake, not a server
+            // fault: 400 with the parser's own message, which names the offending position.
+            return BadRequest(new ProblemDetails
+            {
+                Title = "The import file could not be read.",
+                Detail = ex.Message,
+                Status = StatusCodes.Status400BadRequest,
+            });
+        }
+
+        // Same reasoning as Sync: writing the global catalog needs a context with no tenant
+        // resolved, or GuardGlobalCatalogWrites refuses it. Authorization already happened
+        // against the caller's own scope.
+        using var scope = _scopeFactory.CreateScope();
+        var sync = scope.ServiceProvider.GetRequiredService<VehicleSyncService>();
+
+        var result = await sync.RunAsync(
+            new VehicleSyncOptions
+            {
+                SourceCode = code,
+                Provider = provider,
+                DryRun = dryRun,
+
+                // The document is already in memory, so paging exists only to reuse the sync
+                // loop. These bound it generously rather than meaningfully.
+                MaxPages = int.MaxValue,
+                PageSize = 500,
+            },
+            ct).ConfigureAwait(false);
+
+        return Ok(new
+        {
+            dryRun,
+            recordsInFile = provider.RecordCount,
+            storageReference,
+            syncJobId = result.SyncJobId,
+            status = result.Status.ToString(),
+            result.TotalRecords,
+            result.Created,
+            result.Updated,
+            result.Failed,
+            result.AutoMerged,
+            result.WithoutStrongIdentifier,
+            result.SkippedOutOfScope,
             elapsedMs = (int)result.Elapsed.TotalMilliseconds,
             result.ErrorMessage,
         });

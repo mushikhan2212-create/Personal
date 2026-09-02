@@ -179,6 +179,50 @@ normally, the sync endpoint answers 503, and search over already-synced data is 
 
 Rotate the key if it has ever been pasted into a chat window, a ticket, or a commit.
 
+## Importing vehicles from a file
+
+The platform does not fetch from exporter websites (decision D13). It accepts data, and where
+that data came from is your decision — an authorized partner feed, a dealer's export, or a tool
+you run yourself.
+
+The format is documented in [docs/spec/08-import-format.md](../docs/spec/08-import-format.md),
+with a worked file at `docs/spec/examples/import-sample.json`.
+
+```bash
+# Always dry-run an unfamiliar file first: it reports exactly what a real import would do
+# and writes nothing.
+curl -X POST "http://localhost:5246/api/v1/vehicle-sources/{code}/import?dryRun=true" \
+  -H "Authorization: Bearer <access token>" \
+  -F "file=@docs/spec/examples/import-sample.json"
+
+# Then import for real.
+curl -X POST "http://localhost:5246/api/v1/vehicle-sources/{code}/import" \
+  -H "Authorization: Bearer <access token>" \
+  -F "file=@docs/spec/examples/import-sample.json"
+```
+
+The source must already exist in `VehicleSources`. Whether the cars land in the shared global
+catalog or one tenant's private inventory is decided by that row's `TenantId` — null for
+shared, set for private — not by anything in the file.
+
+### Limiting what a source may ingest
+
+Master prompt §18 forbids unlimited ingestion without filters. Put an allow-list in
+`VehicleSources.IngestionFilterJson`:
+
+```json
+{
+  "makes": ["Toyota", "Nissan"],
+  "models": ["Hiace", "Land Cruiser", "X-Trail"],
+  "destinationMarkets": ["PK", "KE"],
+  "minYear": 2012,
+  "maxRecords": 5000
+}
+```
+
+An absent or empty list means no restriction on that dimension — never "allow nothing".
+Excluded records are counted and returned as `skippedOutOfScope` rather than dropped silently.
+
 ## Migrations
 
 ```bash
