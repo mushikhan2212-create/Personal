@@ -2,6 +2,7 @@ using System.Text;
 using System.Threading.RateLimiting;
 using Asp.Versioning;
 using CarDealer.Api.Authorization;
+using System.Text.Json.Serialization;
 using CarDealer.Api.Serialization;
 using CarDealer.Api.Configuration;
 using CarDealer.Api.Middleware;
@@ -41,7 +42,17 @@ builder.Services
     // Every DateTime this API returns is a UTC field, but the ones read back from datetime2
     // arrive with Kind = Unspecified and would serialise without a Z, which a browser then
     // reads as local time. See UtcDateTimeConverter.
-    .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new UtcDateTimeConverter()));
+    .AddJsonOptions(o =>
+    {
+        o.JsonSerializerOptions.Converters.Add(new UtcDateTimeConverter());
+
+        // Enums are accepted and emitted as names, never as numbers. Every response already
+        // built its enum strings by hand, so this changes no output shape - what it fixes is
+        // the input side, where a request body saying "DealerJson" was rejected and only the
+        // magic number 5 was accepted. A contract that requires callers to know an enum's
+        // ordinal also breaks silently the day someone reorders it.
+        o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
 builder.Services.AddEndpointsApiExplorer();
 
 // One error contract for every failure, including the 401 and 403 produced by the

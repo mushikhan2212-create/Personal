@@ -32,10 +32,37 @@ real import would — how many records are readable, how many fall inside the so
 how many already exist — and writes nothing. A malformed file then costs five seconds and a
 report rather than a half-finished import to unpick.
 
-The source must already be registered in `VehicleSources`; the import attributes every listing
-to it. Whether the cars land in the shared global catalog or one tenant's private inventory is
-decided by that row's `TenantId` — null for shared, set for private. Nothing in the file
-decides it.
+### The source must exist first, with the right type
+
+`{code}` is a `VehicleSources.Code`. The import attributes every listing to that row, and the
+row decides two things the file cannot override:
+
+- **Which adapter reads the payloads.** `ProviderType` must be `DealerJson`. Posting an import
+  to a Carapis-typed source (`sbtjapan`, `goonet_exchange`) returns **400** naming the
+  mismatch — it used to run and report every record as malformed, blaming the file.
+- **Where the cars land.** `TenantId` null puts them in the shared global catalog every tenant
+  reads; set, they stay private to that tenant.
+
+A source called **`file-import`** is seeded in every environment, so the commands above work on
+a fresh database. To create your own:
+
+```bash
+curl -X POST http://localhost:5246/api/v1/vehicle-sources \
+  -H "Authorization: Bearer <access token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "code": "beforward",
+        "name": "BE FORWARD",
+        "providerType": "DealerJson",
+        "sourceType": "File",
+        "baseUrl": "https://www.beforward.jp",
+        "isShared": true
+      }'
+```
+
+`isShared: false` makes it this tenant's private inventory instead. Codes are lower-case
+letters, digits, hyphens and underscores, and are unique within their scope — a duplicate
+returns 409.
 
 ## Document shape
 

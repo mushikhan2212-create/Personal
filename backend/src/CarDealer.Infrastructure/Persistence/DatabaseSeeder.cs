@@ -71,20 +71,33 @@ public sealed class DatabaseSeeder
     /// these rows are what a sync targets, and a source that is not registered cannot be
     /// synced at all.
     ///
-    /// The codes are the ones proven to return data by a count call, which is not a
+    /// The Carapis codes are the ones proven to return data by a count call, which is not a
     /// formality - six sources appear under two or three codes disagreeing about themselves,
     /// and `sbt_japan` returns nothing where `sbtjapan` returns 1,722. Shared, so their
     /// vehicles land in the global catalog with a null TenantId.
+    ///
+    /// ProviderType is not a label: the sync pipeline resolves its normalizer from it, so a
+    /// source registered with the wrong type cannot read its own payloads.
     /// </remarks>
     private async Task SeedVehicleSourcesAsync(CancellationToken ct)
     {
-        (string Code, string Name, string BaseUrl)[] sources =
+        (string Code, string Name, string BaseUrl, VehicleSourceProviderType Provider, VehicleSourceType Kind)[] sources =
         [
-            ("sbtjapan", "SBT Japan", "https://www.sbtjapan.com"),
-            ("goonet_exchange", "Goo-net Exchange", "https://www.goo-net-exchange.com"),
+            ("sbtjapan", "SBT Japan", "https://www.sbtjapan.com",
+                VehicleSourceProviderType.Carapis, VehicleSourceType.Api),
+            ("goonet_exchange", "Goo-net Exchange", "https://www.goo-net-exchange.com",
+                VehicleSourceProviderType.Carapis, VehicleSourceType.Api),
+
+            // A source the JSON import path can actually target. Without one, every code in
+            // the documented import URL belongs to a Carapis source, whose adapter cannot read
+            // the import format - so the first import would fail every record and blame the
+            // file. Registered here so the commands in the README work against a fresh
+            // database with no setup step first (decision D13).
+            ("file-import", "File import", null!,
+                VehicleSourceProviderType.DealerJson, VehicleSourceType.File),
         ];
 
-        foreach (var (code, name, baseUrl) in sources)
+        foreach (var (code, name, baseUrl, provider, kind) in sources)
         {
             var existing = await _db.VehicleSources
                 .IgnoreQueryFilters()
@@ -101,8 +114,8 @@ public sealed class DatabaseSeeder
                 TenantId = null,
                 Name = name,
                 Code = code,
-                ProviderType = VehicleSourceProviderType.Carapis,
-                SourceType = VehicleSourceType.Api,
+                ProviderType = provider,
+                SourceType = kind,
                 BaseUrl = baseUrl,
                 IsShared = true,
                 IsActive = true,

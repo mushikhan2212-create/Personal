@@ -1,6 +1,8 @@
+using System.Text.RegularExpressions;
 using Asp.Versioning;
 using CarDealer.Api.Authorization;
 using CarDealer.Application.Abstractions;
+using CarDealer.Application.VehicleSources;
 using CarDealer.Domain.Entities;
 using CarDealer.Domain.Enums;
 using CarDealer.Infrastructure.Persistence;
@@ -32,17 +34,27 @@ public sealed class VehicleSourcesController : ControllerBase
     private readonly VehicleSyncService _sync;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IFileStorage _storage;
+    private readonly ITenantContext _tenant;
+
+    /// <summary>
+    /// Source codes appear in URLs and in every import that targets them, so the shape is kept
+    /// deliberately narrow rather than accepting whatever a caller sends.
+    /// </summary>
+    private static readonly Regex CodePattern = new(
+        "^[a-z0-9][a-z0-9_-]{0,63}$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public VehicleSourcesController(
         CarDealerDbContext db,
         VehicleSyncService sync,
         IServiceScopeFactory scopeFactory,
-        IFileStorage storage)
+        IFileStorage storage,
+        ITenantContext tenant)
     {
         _db = db;
         _sync = sync;
         _scopeFactory = scopeFactory;
         _storage = storage;
+        _tenant = tenant;
     }
 
     /// <summary>Lists the sources this tenant can see: shared ones, plus its own.</summary>
@@ -90,6 +102,127 @@ public sealed class VehicleSourcesController : ControllerBase
             .ConfigureAwait(false);
 
         return Ok(sources);
+    }
+
+    /// <summary>
+    /// Registers a vehicle source.
+    /// </summary>
+    /// <remarks>
+    /// A source is what a listing is attributed to, and its row decides two things nothing
+    /// else can override: which adapter reads its payloads (<c>providerType</c>), and whether
+    /// its vehicles land in the shared global catalog or one tenant's private inventory
+    /// (<c>isShared</c>, decision D1).
+    ///
+    /// Creating a shared source writes a global row, so it runs in a DI scope with no tenant
+    /// resolved - the same route the sync and import paths take, and the only one the
+    /// DbContext's write guard permits for a global write.
+    /// </remarks>
+    [HttpPost]
+    [HasPermission(Permissions.VehiclesSync)]
+    [ProducesResponseType(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Create(
+        [FromBody] CreateVehicleSourceRequest request, CancellationToken ct)
+    {
+        var code = request.Code?.Trim();
+
+        if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(request.Name))
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "A source needs both a code and a name.",
+                Status = StatusCodes.Status400BadRequest,
+            });
+        }
+
+        if (!CodePattern.IsMatch(code))
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = $"'{code}' is not a usable source code.",
+                Detail = "Use lower-case letters, digits, hyphens and underscores, up to 64 "
+                    + "characters. The code appears in URLs and in every import that targets "
+                    + "this source, so it is deliberately restrictive.",
+                Status = StatusCodes.Status400BadRequest,
+            });
+        }
+
+        if (request.IngestionFilterJson is not null)
+        {
+            try
+            {
+                IngestionFilter.Parse(request.IngestionFilterJson);
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Validated now rather than at the first import: a filter that cannot be read
+                // stops ingestion entirely, and finding that out during an import is finding
+                // it out at the worst moment.
+                return BadRequest(new ProblemDetails
+                {
+                    Title = "The ingestion filter is not valid JSON.",
+                    Detail = ex.Message,
+                    Status = StatusCodes.Status400BadRequest,
+                });
+            }
+        }
+
+        var tenantId = request.IsShared ? (long?)null : _tenant.TenantId;
+
+        // Uniqueness is over (ISNULL(TenantId, 0), Code) - the TenantScope computed column -
+        // so a shared code and a tenant's own code do not collide. Checked here to answer with
+        // a 409 rather than letting the unique index surface as an unhandled 500.
+        var clash = await _db.VehicleSources
+            .IgnoreQueryFilters()
+            .AnyAsync(v => v.Code == code && v.TenantId == tenantId, ct)
+            .ConfigureAwait(false);
+
+        if (clash)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Title = $"A source with code '{code}' is already registered.",
+                Detail = request.IsShared
+                    ? "Shared source codes are unique across the platform."
+                    : "This tenant already has a source with that code.",
+                Status = StatusCodes.Status409Conflict,
+            });
+        }
+
+        // A shared source is a global-catalog row, and GuardGlobalCatalogWrites refuses those
+        // from a tenant-scoped request path. Authorization already ran against the caller.
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CarDealerDbContext>();
+
+        var source = new VehicleSource
+        {
+            TenantId = tenantId,
+            Name = request.Name.Trim(),
+            Code = code,
+            ProviderType = request.ProviderType,
+            SourceType = request.SourceType,
+            BaseUrl = string.IsNullOrWhiteSpace(request.BaseUrl) ? null : request.BaseUrl.Trim(),
+            IsShared = request.IsShared,
+            IsActive = true,
+            IngestionFilterJson = request.IngestionFilterJson,
+        };
+
+        db.VehicleSources.Add(source);
+        await db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+        return Created($"/api/v1/vehicle-sources/{source.Code}", new
+        {
+            source.Code,
+            source.Name,
+            ProviderType = source.ProviderType.ToString(),
+            SourceType = source.SourceType.ToString(),
+            source.IsShared,
+            source.IsActive,
+            source.BaseUrl,
+            scope = source.TenantId is null ? "global" : "tenant",
+        });
     }
 
     /// <summary>
@@ -245,6 +378,25 @@ public sealed class VehicleSourcesController : ControllerBase
             });
         }
 
+        // The import format is read by ImportNormalizer, which the sync pipeline resolves from
+        // the source's provider type. Posting an import to a Carapis-typed source therefore
+        // resolves CarapisNormalizer, which finds no "id" field and rejects every record as
+        // carrying no usable identifier - blaming the file for what is actually the wrong
+        // source. Say so here instead, on the first attempt, with the real reason.
+        if (source.ProviderType != VehicleSourceProviderType.DealerJson)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = $"Source '{code}' cannot accept a JSON import.",
+                Detail = $"It is registered as ProviderType '{source.ProviderType}', which is "
+                    + "read by that provider's own adapter. Importing a file needs a source "
+                    + $"registered as '{VehicleSourceProviderType.DealerJson}'. Create one with "
+                    + "POST /api/v1/vehicle-sources, or import to a source that already has "
+                    + "that type. See docs/spec/08-import-format.md.",
+                Status = StatusCodes.Status400BadRequest,
+            });
+        }
+
         JsonFileVehicleProvider provider;
         string? storageReference = null;
 
@@ -313,4 +465,38 @@ public sealed class VehicleSourcesController : ControllerBase
             result.ErrorMessage,
         });
     }
+}
+
+/// <summary>What is needed to register a vehicle source.</summary>
+public sealed record CreateVehicleSourceRequest
+{
+    /// <summary>Stable identifier used in URLs. Lower-case, hyphens and underscores.</summary>
+    public string? Code { get; init; }
+
+    public string? Name { get; init; }
+
+    /// <summary>
+    /// Which adapter reads this source's payloads. <c>DealerJson</c> for file imports.
+    /// </summary>
+    /// <remarks>
+    /// Not a cosmetic label: the sync pipeline resolves its normalizer from this, so a source
+    /// registered with the wrong type cannot read its own data.
+    /// </remarks>
+    public VehicleSourceProviderType ProviderType { get; init; } = VehicleSourceProviderType.DealerJson;
+
+    public VehicleSourceType SourceType { get; init; } = VehicleSourceType.File;
+
+    public string? BaseUrl { get; init; }
+
+    /// <summary>
+    /// True puts this source's vehicles in the global catalog every tenant reads; false keeps
+    /// them private to the calling tenant (decision D1).
+    /// </summary>
+    public bool IsShared { get; init; } = true;
+
+    /// <summary>
+    /// Optional allow-list bounding what this source may ingest (master prompt section 18).
+    /// See docs/spec/08-import-format.md.
+    /// </summary>
+    public string? IngestionFilterJson { get; init; }
 }

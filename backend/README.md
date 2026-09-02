@@ -201,9 +201,19 @@ curl -X POST "http://localhost:5246/api/v1/vehicle-sources/{code}/import" \
   -F "file=@docs/spec/examples/import-sample.json"
 ```
 
-The source must already exist in `VehicleSources`. Whether the cars land in the shared global
-catalog or one tenant's private inventory is decided by that row's `TenantId` — null for
-shared, set for private — not by anything in the file.
+`{code}` is a `VehicleSources.Code`. A source called **`file-import`** is seeded in every
+environment so the commands above work immediately. To register your own:
+
+```bash
+curl -X POST http://localhost:5246/api/v1/vehicle-sources \
+  -H "Authorization: Bearer <access token>" -H "Content-Type: application/json" \
+  -d '{"code":"beforward","name":"BE FORWARD","providerType":"DealerJson","isShared":true}'
+```
+
+Two fields on that row decide things the import file cannot override. `providerType` must be
+`DealerJson` — it selects the adapter that reads the payloads, and importing to a Carapis-typed
+source such as `sbtjapan` returns 400. `isShared` decides whether the vehicles land in the
+shared global catalog every tenant reads, or stay private to the calling tenant.
 
 ### Limiting what a source may ingest
 

@@ -187,9 +187,11 @@ public sealed class VehicleSyncService
         if (!_normalizers.TryGetValue(source.ProviderType, out var normalizer))
         {
             throw new InvalidOperationException(
-                $"No normalizer is registered for provider type '{source.ProviderType}', which "
-                + $"source '{options.SourceCode}' declares. Register an IVehicleRecordNormalizer "
-                + "for it before syncing.");
+                $"Source '{options.SourceCode}' declares provider type '{source.ProviderType}', "
+                + "and no IVehicleRecordNormalizer is registered to read that type's payloads. "
+                + "Either the source is registered with the wrong type - a JSON import needs "
+                + $"'{VehicleSourceProviderType.DealerJson}' - or an adapter for it has not "
+                + "been written yet.");
         }
 
         // Parsed before the job row exists: an unreadable filter should stop the run outright
@@ -287,7 +289,7 @@ public sealed class VehicleSyncService
 
                     try
                     {
-                        var outcome = await UpsertAsync(record, normalizer, source.Id, job.Id, ct).ConfigureAwait(false);
+                        var outcome = await UpsertAsync(record, normalizer, source, job.Id, ct).ConfigureAwait(false);
 
                         switch (outcome)
                         {
@@ -532,10 +534,11 @@ public sealed class VehicleSyncService
     private async Task<UpsertOutcome> UpsertAsync(
         RawVehicleRecord record,
         IVehicleRecordNormalizer normalizer,
-        long sourceId,
+        VehicleSource source,
         long syncJobId,
         CancellationToken ct)
     {
+        var sourceId = source.Id;
         var normalized = normalizer.Normalize(record, sourceId);
 
         if (normalized is null)
@@ -550,6 +553,23 @@ public sealed class VehicleSyncService
             });
 
             return UpsertOutcome.Skipped;
+        }
+
+        // Ownership comes from the source, not from the normalizer.
+        //
+        // A normalizer produces a canonical shape and has no business deciding who owns the
+        // result - it is handed a source id, not a tenant. Every normalizer therefore leaves
+        // TenantId null, which is right for a shared source and catastrophically wrong for a
+        // tenant's own: a dealer importing their private inventory would publish it to the
+        // global catalog that every other tenant reads.
+        var owner = source.TenantId;
+
+        normalized.Vehicle.TenantId = owner;
+        normalized.Listing.TenantId = owner;
+
+        foreach (var image in normalized.Images)
+        {
+            image.TenantId = owner;
         }
 
         var externalId = normalized.Listing.ExternalListingId;
@@ -589,10 +609,15 @@ public sealed class VehicleSyncService
             // lookup would miss it and create a second row - making deduplication depend on
             // where the page boundary happened to fall, which is not a property anyone could
             // reason about. Caught by Two_listings_sharing_a_vin_attach_to_one_vehicle.
-            survivor = _db.Vehicles.Local.FirstOrDefault(v => v.CanonicalHash == hash)
+            // Scoped to the same owner. Two tenants importing the same VIN own two separate
+            // cars, and merging them would attach one tenant's listing to the other's vehicle -
+            // the exact cross-tenant leak decision D1 exists to prevent. A hash match is
+            // evidence of the same physical car, never of shared ownership.
+            survivor = _db.Vehicles.Local
+                    .FirstOrDefault(v => v.CanonicalHash == hash && v.TenantId == owner)
                 ?? await _db.Vehicles
                     .IgnoreQueryFilters()
-                    .FirstOrDefaultAsync(v => v.CanonicalHash == hash, ct)
+                    .FirstOrDefaultAsync(v => v.CanonicalHash == hash && v.TenantId == owner, ct)
                     .ConfigureAwait(false);
         }
 
