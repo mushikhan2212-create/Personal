@@ -121,34 +121,61 @@ bucket. Deployments behind a proxy should raise the limit and rely on the proxy'
 ### Supplying the vehicle source API key
 
 The key is a credential. It must never go in `appsettings*.json` or anywhere else that is
-committed — those files are in the repository, and a key in git history stays there. Pick the
-route that matches how you start the API:
+committed — those files are in the repository, and a key in git history stays there.
+
+**Visual Studio (the usual path).** Right-click the **CarDealer.Api** project → **Manage User
+Secrets**. Visual Studio opens a `secrets.json` stored in your user profile, outside the
+repository, where it cannot be committed by accident. Add the key:
+
+```json
+{
+  "Carapis": {
+    "ApiKey": "your-key-here"
+  }
+}
+```
+
+The flat form works identically if you prefer it — `"Carapis:ApiKey": "your-key-here"` — but do
+not put both in the same file. Restart debugging afterwards; configuration is read at startup.
+
+Secrets are loaded **only in Development**, which is what the launch profiles set. That is
+deliberate: staging and production must supply the key from their own secret store, never from
+a developer's machine.
+
+The CLI equivalent, if you would rather not use the IDE:
+
+```bash
+dotnet user-secrets --project src/CarDealer.Api set "Carapis:ApiKey" "your-key-here"
+```
 
 **`docker compose up`** — put it in `backend/.env`, which compose reads automatically and
 `.gitignore` excludes. Copy `backend/.env.example` and fill in `CARAPIS_API_KEY`.
 
-**`dotnet run`** — use user secrets, which are stored in your user profile rather than the
-working tree, and persist across sessions:
-
-```bash
-dotnet user-secrets --project src/CarDealer.Api set "Carapis:ApiKey" "<your key>"
-```
-
-Note the separator: `:` for user secrets, `__` for an environment variable. Both bind to the
+**A one-off run** — an environment variable, which lasts only for that shell. Note the
+separator differs: `__` for an environment variable, `:` for user secrets. Both bind to the
 same setting.
 
-**A one-off run** — an environment variable, which lasts only for that shell:
-
 ```powershell
-$env:Carapis__ApiKey = "<your key>"    # PowerShell
+$env:Carapis__ApiKey = "your-key-here"    # PowerShell
 ```
 
 ```bash
-export Carapis__ApiKey="<your key>"    # bash
+export Carapis__ApiKey="your-key-here"    # bash
 ```
 
-To confirm the key was picked up, `POST /api/v1/vehicle-sources/{code}/sync`. A 503 means no
-provider was configured — the key did not reach the app. Anything else means it did.
+#### Checking it was picked up
+
+`POST /api/v1/vehicle-sources/sbtjapan/sync?maxPages=1` and read the response:
+
+| Response | Meaning |
+| --- | --- |
+| **503**, "No vehicle source provider is configured" | The key did not reach the app. Wrong file, wrong separator, or the app was not restarted |
+| **200** with `"status": "Succeeded"` | Working. `created` and `updated` say how many vehicles landed |
+| **200** with `"status": "Failed"` and a network error in `errorMessage` | The key was read and the request was made; something between you and the API failed |
+| **403** | Your account lacks `vehicles.sync`. Sign in as a tenant owner or sales manager |
+
+Sync is off by default and that is a supported state: without a key the platform runs
+normally, the sync endpoint answers 503, and search over already-synced data is unaffected.
 
 Rotate the key if it has ever been pasted into a chat window, a ticket, or a commit.
 
