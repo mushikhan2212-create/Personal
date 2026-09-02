@@ -25,6 +25,30 @@ public sealed class SqlServerSearchProvider : ISearchProvider
 
     public SqlServerSearchProvider(CarDealerDbContext db) => _db = db;
 
+    private const string LikeEscape = "\\";
+
+    /// <summary>
+    /// How many words of a search are honoured. Each one adds an OR group over three columns,
+    /// so an unbounded phrase would let a caller build an arbitrarily expensive query.
+    /// </summary>
+    private const int MaxSearchTerms = 8;
+
+    /// <summary>Splits a search into per-word LIKE patterns, with wildcards escaped.</summary>
+    /// <remarks>
+    /// Escaping matters: %, _ and [ are wildcards to SQL Server, so a search for "50%" would
+    /// otherwise match everything rather than nothing, and the user would have no way to tell
+    /// the difference between a broken filter and a popular car.
+    /// </remarks>
+    private static IEnumerable<string> BuildSearchPatterns(string text) =>
+        text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Take(MaxSearchTerms)
+            .Select(term => "%"
+                + term.Replace("\\", "\\\\")
+                    .Replace("%", "\\%")
+                    .Replace("_", "\\_")
+                    .Replace("[", "\\[")
+                + "%");
+
     public async Task<VehicleSearchResult> SearchAsync(
         VehicleSearchQuery query, CancellationToken ct = default)
     {
@@ -47,15 +71,27 @@ public sealed class SqlServerSearchProvider : ISearchProvider
 
         if (!string.IsNullOrWhiteSpace(query.Text))
         {
-            var text = query.Text.Trim();
-
-            // Raw make and model, not the normalized ids: an unmapped alias leaves MakeId null
-            // and the vehicle must stay findable by the text it arrived with, or normalization
-            // gaps become silent inventory loss (canonical model spec section 7).
-            listings = listings.Where(l =>
-                (l.Vehicle.Make != null && EF.Functions.Like(l.Vehicle.Make, $"%{text}%"))
-                || (l.Vehicle.Model != null && EF.Functions.Like(l.Vehicle.Model, $"%{text}%"))
-                || (l.Vehicle.Variant != null && EF.Functions.Like(l.Vehicle.Variant, $"%{text}%")));
+            // Each word must match somewhere, but not all in the same column.
+            //
+            // "Toyota 86 GT Limited" is one car spread across three fields - Make "Toyota",
+            // Model "86", Variant "GT Limited" - so matching the phrase against any single
+            // column finds nothing at all. That is how people type a search, and it returned
+            // an empty page for a car sitting in the table.
+            //
+            // So: AND across the terms, OR across the columns. Every word has to appear in one
+            // of the three, which keeps "Toyota Hiace" from matching every Toyota while still
+            // finding a car whose words are split across columns.
+            foreach (var pattern in BuildSearchPatterns(query.Text))
+            {
+                // Raw make and model, not the normalized ids: an unmapped alias leaves MakeId
+                // null and the vehicle must stay findable by the text it arrived with, or
+                // normalization gaps become silent inventory loss (canonical model spec
+                // section 7).
+                listings = listings.Where(l =>
+                    (l.Vehicle.Make != null && EF.Functions.Like(l.Vehicle.Make, pattern, LikeEscape))
+                    || (l.Vehicle.Model != null && EF.Functions.Like(l.Vehicle.Model, pattern, LikeEscape))
+                    || (l.Vehicle.Variant != null && EF.Functions.Like(l.Vehicle.Variant, pattern, LikeEscape)));
+            }
         }
 
         if (query.MakeId is { } makeId) listings = listings.Where(l => l.Vehicle.MakeId == makeId);
