@@ -28,6 +28,34 @@ public sealed class SqlServerSearchProvider : ISearchProvider
     private const string LikeEscape = "\\";
 
     /// <summary>
+    /// Statuses that mean the car is gone. Everything else is searchable.
+    /// </summary>
+    /// <remarks>
+    /// Stated as an exclusion, not as "Status == Active", and that is the whole point.
+    ///
+    /// Carapis publishes is_available only on the detail endpoint, so a sync that reads the
+    /// list - the default, and the cheap one - leaves every vehicle at Unknown, meaning "the
+    /// source did not say". Requiring Active turned that silence into a hidden car: a catalog
+    /// of 400 synced vehicles returned nothing at all, for every query, with a perfectly
+    /// healthy 200. The listing row had already made the opposite call, defaulting IsActive to
+    /// true when the field was absent, so the two halves of the same record disagreed about
+    /// the same missing value.
+    ///
+    /// Absence of evidence that a car is gone is not evidence that it is gone. So only the
+    /// statuses that positively assert it is gone hide it, and a status this list does not
+    /// know about stays visible. That direction matters: a car wrongly shown is a listing
+    /// someone clicks and finds sold, while a car wrongly hidden is inventory that silently
+    /// does not exist - which is exactly the failure this replaced.
+    /// </remarks>
+    private static readonly VehicleStatus[] GoneStatuses =
+    [
+        VehicleStatus.Sold,
+        VehicleStatus.Unavailable,
+        VehicleStatus.Expired,
+        VehicleStatus.Archived,
+    ];
+
+    /// <summary>
     /// How many words of a search are honoured. Each one adds an OR group over three columns,
     /// so an unbounded phrase would let a caller build an arbitrarily expensive query.
     /// </summary>
@@ -62,7 +90,7 @@ public sealed class SqlServerSearchProvider : ISearchProvider
         var listings = _db.VehicleListings
             .AsNoTracking()
             .Where(l => l.IsActive)
-            .Where(l => l.Vehicle.Status == VehicleStatus.Active);
+            .Where(l => !GoneStatuses.Contains(l.Vehicle.Status));
 
         if (query.VehicleSourceId is { } sourceId)
         {

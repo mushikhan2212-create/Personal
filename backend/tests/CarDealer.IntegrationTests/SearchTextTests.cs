@@ -152,3 +152,148 @@ public sealed class SearchTextTests : IClassFixture<ApiFactory>
         Assert.Equal(0, await CountAsync($"{marker}Toyota 8_", tenantId));
     }
 }
+
+
+/// <summary>
+/// Which vehicle statuses a search returns.
+/// </summary>
+/// <remarks>
+/// The rule these pin down cost a whole catalog once. Carapis reports is_available only on
+/// its detail endpoint, so a default sync leaves every vehicle at Unknown - "the source did
+/// not say". Search required Active, so 400 synced cars were unreachable by any query, and
+/// the endpoint returned a healthy 200 the entire time. Nothing in the logs said a thing.
+/// </remarks>
+public sealed class SearchStatusTests : IClassFixture<ApiFactory>
+{
+    private readonly ApiFactory _factory;
+
+    public SearchStatusTests(ApiFactory factory) => _factory = factory;
+
+    private async Task<(string Marker, long TenantId)> SeedAsync(params VehicleStatus[] statuses)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CarDealerDbContext>();
+
+        var tenantId = await db.Tenants.OrderBy(t => t.Id).Select(t => t.Id).FirstAsync();
+        var marker = $"ST{Guid.NewGuid():N}"[..10];
+
+        var source = new VehicleSource
+        {
+            Name = "SBT Japan",
+            Code = $"src-{Guid.NewGuid():N}"[..16],
+            ProviderType = VehicleSourceProviderType.Carapis,
+            SourceType = VehicleSourceType.Api,
+            IsShared = true,
+        };
+        db.VehicleSources.Add(source);
+        await db.SaveChangesAsync();
+
+        foreach (var status in statuses)
+        {
+            var vehicle = new Vehicle
+            {
+                PublicId = Guid.NewGuid(),
+                Make = marker,
+                Model = status.ToString(),
+                ModelYear = 2019,
+                Status = status,
+            };
+
+            db.Vehicles.Add(vehicle);
+            db.VehicleListings.Add(new VehicleListing
+            {
+                Vehicle = vehicle,
+                VehicleSourceId = source.Id,
+                ExternalListingId = $"{status}-{Guid.NewGuid():N}"[..24],
+                FirstSeenAtUtc = DateTime.UtcNow,
+                LastSeenAtUtc = DateTime.UtcNow,
+                IsActive = true,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        return (marker, tenantId);
+    }
+
+    private async Task<string[]> VisibleAsync(string marker, long tenantId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        scope.ServiceProvider.GetRequiredService<TenantContext>().SetTenant(tenantId);
+        var db = scope.ServiceProvider.GetRequiredService<CarDealerDbContext>();
+
+        var result = await new SqlServerSearchProvider(db)
+            .SearchAsync(new VehicleSearchQuery { Text = marker, PageSize = 100 });
+
+        return [.. result.Hits.Select(h => h.Model!).OrderBy(m => m)];
+    }
+
+    [Fact]
+    public async Task A_vehicle_whose_source_never_stated_availability_is_still_searchable()
+    {
+        // The exact shape a list-only sync produces, and the regression itself.
+        var (marker, tenantId) = await SeedAsync(VehicleStatus.Unknown);
+
+        Assert.Equal(["Unknown"], await VisibleAsync(marker, tenantId));
+    }
+
+    [Fact]
+    public async Task Only_vehicles_the_source_says_are_gone_are_hidden()
+    {
+        var (marker, tenantId) = await SeedAsync(
+            VehicleStatus.Unknown,
+            VehicleStatus.Active,
+            VehicleStatus.Reserved,
+            VehicleStatus.Sold,
+            VehicleStatus.Unavailable,
+            VehicleStatus.Expired,
+            VehicleStatus.Archived);
+
+        // Reserved stays visible: the car exists and the deal may yet fall through. Sold,
+        // Unavailable, Expired and Archived are the source positively saying it is gone.
+        Assert.Equal(["Active", "Reserved", "Unknown"], await VisibleAsync(marker, tenantId));
+    }
+
+    [Fact]
+    public async Task An_inactive_listing_is_hidden_whatever_the_vehicle_status_says()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CarDealerDbContext>();
+
+        var tenantId = await db.Tenants.OrderBy(t => t.Id).Select(t => t.Id).FirstAsync();
+        var marker = $"SI{Guid.NewGuid():N}"[..10];
+
+        var source = new VehicleSource
+        {
+            Name = "SBT Japan",
+            Code = $"src-{Guid.NewGuid():N}"[..16],
+            ProviderType = VehicleSourceProviderType.Carapis,
+            SourceType = VehicleSourceType.Api,
+            IsShared = true,
+        };
+        db.VehicleSources.Add(source);
+        await db.SaveChangesAsync();
+
+        var vehicle = new Vehicle
+        {
+            PublicId = Guid.NewGuid(),
+            Make = marker,
+            Model = "Delisted",
+            Status = VehicleStatus.Active,
+        };
+        db.Vehicles.Add(vehicle);
+        db.VehicleListings.Add(new VehicleListing
+        {
+            Vehicle = vehicle,
+            VehicleSourceId = source.Id,
+            ExternalListingId = $"inactive-{Guid.NewGuid():N}"[..24],
+            FirstSeenAtUtc = DateTime.UtcNow,
+            LastSeenAtUtc = DateTime.UtcNow,
+            IsActive = false,
+        });
+        await db.SaveChangesAsync();
+
+        // Relaxing the status rule must not also resurrect withdrawn listings - the listing's
+        // own IsActive is a separate statement and still hides the row.
+        Assert.Empty(await VisibleAsync(marker, tenantId));
+    }
+}

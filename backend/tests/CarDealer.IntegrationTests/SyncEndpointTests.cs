@@ -136,8 +136,13 @@ public sealed class StubSyncProvider : IVehicleSourceSyncProvider
     {
         Interlocked.Increment(ref _callCount);
 
-        // Shaped like the real payload, and stable across calls: the same two VINs must
+        // Shaped like the real LIST payload, and stable across calls: the same two VINs must
         // upsert rather than duplicate when a second test re-runs the sync.
+        //
+        // is_available is deliberately absent. Carapis publishes it only on the detail
+        // endpoint, so a default sync never sees it - which is what left every synced vehicle
+        // at status Unknown and invisible to a search that demanded Active. A stub that sent
+        // the field would have hidden that bug rather than caught it.
         var records = Enumerable.Range(1, query.PageSize).Select(i => new RawVehicleRecord
         {
             ExternalId = $"stub-{i}",
@@ -158,8 +163,7 @@ public sealed class StubSyncProvider : IVehicleSourceSyncProvider
                   "vin": "JTFSX23P9000{{i}}1234",
                   "price_original": "1500000",
                   "price_original_currency": "JPY",
-                  "listing_url": "https://www.sbtjapan.com/used-cars/stub-{{i}}",
-                  "is_available": true
+                  "listing_url": "https://www.sbtjapan.com/used-cars/stub-{{i}}"
                 }
                 """,
         }).ToList();
