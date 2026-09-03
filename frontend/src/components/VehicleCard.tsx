@@ -26,7 +26,9 @@ const formatMoney = (amount: number | null, currency: string | null): string => 
   }
 };
 
-export function VehicleCard({ vehicle }: { vehicle: VehicleSummary }) {
+export function VehicleCard({
+  vehicle, onOpen,
+}: { vehicle: VehicleSummary; onOpen: () => void }) {
   const title = [vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'Unidentified vehicle';
   const age = ageInDays(vehicle.lastSeenAtUtc);
   const isStale = age !== null && age > STALE_AFTER_DAYS;
@@ -34,6 +36,7 @@ export function VehicleCard({ vehicle }: { vehicle: VehicleSummary }) {
   return (
     <Card
       hoverable
+      onClick={onOpen}
       styles={{ body: { padding: 16 } }}
       cover={
         vehicle.imageUrl
@@ -113,12 +116,29 @@ export function VehicleCard({ vehicle }: { vehicle: VehicleSummary }) {
           </Typography.Text>
         </Tooltip>
 
-        {/* Attribution is a POC acceptance criterion, not decoration. */}
+        {/* Attribution is a POC acceptance criterion, not decoration. When several sources
+            offer the same car the API sends no single name, because naming one of three
+            would misattribute the other two - so the card says how many instead. */}
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          Source:{' '}
-          {vehicle.sourceUrl
-            ? <a href={vehicle.sourceUrl} target="_blank" rel="noreferrer noopener">{vehicle.sourceName ?? 'listing'}</a>
-            : (vehicle.sourceName ?? 'unknown')}
+          {vehicle.offerCount > 1
+            ? `${vehicle.offerCount} offers from ${vehicle.sourceCount} source${vehicle.sourceCount === 1 ? '' : 's'} — cheapest shown`
+            : (
+              <>
+                Source:{' '}
+                {vehicle.sourceUrl
+                  ? (
+                    <a
+                      href={vehicle.sourceUrl}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {vehicle.sourceName ?? 'listing'}
+                    </a>
+                  )
+                  : (vehicle.sourceName ?? 'unknown')}
+              </>
+            )}
         </Typography.Text>
       </Space>
     </Card>

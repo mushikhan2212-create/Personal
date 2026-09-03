@@ -1,5 +1,6 @@
 import type {
-  LoginResponse, SyncResult, VehicleSearchResponse, VehicleSearchSort, VehicleSourceSummary,
+  ImportResult, LoginResponse, SyncResult, VehicleDetail, VehicleSearchResponse,
+  VehicleSearchSort, VehicleSourceSummary,
 } from './types';
 
 /**
@@ -67,6 +68,11 @@ async function refreshTokens(): Promise<boolean> {
   })();
 
   return refreshInFlight;
+}
+
+/** The Authorization header, or nothing when signed out. */
+function accessTokenHeader(): Record<string, string> {
+  return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
 }
 
 async function send(path: string, init?: RequestInit): Promise<Response> {
@@ -158,3 +164,44 @@ export const syncSource = (
     `/vehicle-sources/${encodeURIComponent(code)}/sync?maxPages=${maxPages}&fetchDetail=${fetchDetail}`,
     { method: 'POST' },
   );
+
+export const getVehicle = (id: string): Promise<VehicleDetail> =>
+  request<VehicleDetail>(`/vehicles/${encodeURIComponent(id)}`);
+
+/**
+ * Uploads an import document.
+ *
+ * Deliberately not routed through `request`: that helper sets a JSON content type, and a
+ * multipart body must let the browser set its own boundary. Overriding it by hand is how you
+ * get a request the server cannot parse.
+ */
+export async function importFile(
+  code: string, file: File, dryRun: boolean,
+): Promise<ImportResult> {
+  const body = new FormData();
+  body.append('file', file);
+
+  const response = await fetch(
+    `/api/v1/vehicle-sources/${encodeURIComponent(code)}/import?dryRun=${dryRun}`,
+    {
+      method: 'POST',
+      headers: accessTokenHeader(),
+      body,
+    },
+  );
+
+  if (!response.ok) {
+    let message = `Import failed with ${response.status}.`;
+
+    try {
+      const problem = (await response.json()) as { title?: string; detail?: string };
+      message = [problem.title, problem.detail].filter(Boolean).join(' ') || message;
+    } catch {
+      // Non-JSON body; the status carries the meaning.
+    }
+
+    throw new ApiError(response.status, message);
+  }
+
+  return (await response.json()) as ImportResult;
+}

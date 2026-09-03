@@ -46,6 +46,9 @@ export interface VehicleSummary {
   priceType: PriceType;
   sourceName: string | null;
   sourceUrl: string | null;
+  /** How many listings offer this car, and from how many distinct sources. */
+  offerCount: number;
+  sourceCount: number;
   imageUrl: string | null;
   lastSeenAtUtc: string;
   tenantPrice: number | null;
@@ -108,4 +111,60 @@ export interface SyncResult {
   requestCount: number;
   elapsedMs: number;
   errorMessage: string | null;
+}
+
+export interface VehicleDetailListing {
+  sourceName: string | null;
+  sourceUrl: string | null;
+  externalListingId: string | null;
+  price: number | null;
+  currencyCode: string | null;
+  priceBaseCurrency: number | null;
+  baseCurrencyCode: string | null;
+  priceType: PriceType;
+  portOfLoading: string | null;
+  locationCountryCode: string | null;
+  isActive: boolean;
+  firstSeenAtUtc: string;
+  lastSeenAtUtc: string;
+}
+
+export type CanonicalHashSource = 'Unknown' | 'Vin' | 'ChassisNumber' | 'SourceLotNumber';
+
+export interface VehicleDetail {
+  id: string;
+  make: string | null;
+  model: string | null;
+  variant: string | null;
+  year: number | null;
+  bodyType: string | null;
+  engineDisplacementCc: number | null;
+  mileage: number | null;
+  mileageUnit: MileageUnit;
+  steeringSide: SteeringSide;
+  fuelType: FuelType;
+  transmission: Transmission;
+  drivetrain: string;
+  status: string;
+  exteriorColor: string | null;
+  interiorColor: string | null;
+  condition: string | null;
+  auctionGrade: string | null;
+  vin: string | null;
+  chassisNumber: string | null;
+  lotNumber: string | null;
+  /** Which identifier deduplication matched on, or null when nothing could be matched. */
+  canonicalHashSource: CanonicalHashSource | null;
+  imageUrls: string[];
+  listings: VehicleDetailListing[];
+  tenantPrice: number | null;
+  tenantCurrencyCode: string | null;
+  internalNotes: string | null;
+}
+
+export interface ImportResult extends SyncResult {
+  dryRun: boolean;
+  recordsInFile: number;
+  storageReference: string | null;
+  skippedOutOfScope: number;
 }

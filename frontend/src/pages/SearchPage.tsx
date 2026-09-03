@@ -14,6 +14,10 @@ import type { Session } from '../App';
 interface Props {
   session: Session;
   onSignOut: () => void;
+  onOpenVehicle: (id: string) => void;
+  onOpenImport: () => void;
+  /** Bumped by an import, so returning here re-runs the query instead of showing stale counts. */
+  catalogVersion: number;
 }
 
 interface Filters {
@@ -31,7 +35,9 @@ interface Filters {
 
 const PAGE_SIZE = 24;
 
-export function SearchPage({ session, onSignOut }: Props) {
+export function SearchPage({
+  session, onSignOut, onOpenVehicle, onOpenImport, catalogVersion,
+}: Props) {
   const { message } = AntApp.useApp();
 
   const [filters, setFilters] = useState<Filters>({ q: '', sort: 'RecentlySeen' });
@@ -68,10 +74,10 @@ export function SearchPage({ session, onSignOut }: Props) {
   useEffect(() => {
     void runSearch(1, filters);
     void refreshSources();
-    // Deliberately once on mount: later searches are driven by the button and the pager, not
-    // by every keystroke, which would spend a request per character.
+    // On mount, and again after an import. Not on every keystroke - that would spend a
+    // request per character typed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [catalogVersion]);
 
   const submit = (): void => {
     setPage(1);
@@ -112,7 +118,10 @@ export function SearchPage({ session, onSignOut }: Props) {
           <Tag>{session.tenant.slug}</Tag>
           <Typography.Text type="secondary">{session.email}</Typography.Text>
         </Space>
-        <Button onClick={onSignOut}>Sign out</Button>
+        <Space>
+          {canSync && <Button onClick={onOpenImport}>Import vehicles</Button>}
+          <Button onClick={onSignOut}>Sign out</Button>
+        </Space>
       </Flex>
 
       <Card size="small" title="Sources">
@@ -294,7 +303,7 @@ export function SearchPage({ session, onSignOut }: Props) {
           <Row gutter={[16, 16]}>
             {result?.items.map((v) => (
               <Col key={v.id} xs={24} sm={12} md={8} lg={6}>
-                <VehicleCard vehicle={v} />
+                <VehicleCard vehicle={v} onOpen={() => onOpenVehicle(v.id)} />
               </Col>
             ))}
           </Row>
