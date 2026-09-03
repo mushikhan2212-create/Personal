@@ -140,6 +140,57 @@ public sealed class DatabaseSeeder
     /// them means inserting newer rows, never editing these, because listings pin the row they
     /// used and rewriting it would retroactively change historical prices.
     /// </remarks>
+    /// <summary>
+    /// Two sources matching the sample import files, so the documented walkthrough works.
+    /// </summary>
+    /// <remarks>
+    /// Development only, and deliberately: these are demonstration sources, not reference data
+    /// any real deployment needs.
+    ///
+    /// The codes must match the `sourceCode` inside `docs/spec/examples/import-exporter-*.json`
+    /// exactly. The import endpoint refuses a document that names a different source, which is
+    /// the right guard - importing one exporter's stock under another's misattributes every
+    /// car - but it also means a sample file is unusable until the source it names exists.
+    ///
+    /// Two of them rather than one, because the same cars appear in both files: importing
+    /// them in turn is what demonstrates cross-source deduplication, and a single source
+    /// would just look like a re-import.
+    /// </remarks>
+    private async Task SeedSampleImportSourcesAsync(CancellationToken ct)
+    {
+        (string Code, string Name)[] samples =
+        [
+            ("exporter-a", "Exporter A (sample data)"),
+            ("exporter-b", "Exporter B (sample data)"),
+        ];
+
+        foreach (var (code, name) in samples)
+        {
+            var exists = await _db.VehicleSources
+                .IgnoreQueryFilters()
+                .AnyAsync(s => s.Code == code, ct)
+                .ConfigureAwait(false);
+
+            if (exists)
+            {
+                continue;
+            }
+
+            _db.VehicleSources.Add(new VehicleSource
+            {
+                TenantId = null,
+                Name = name,
+                Code = code,
+                ProviderType = VehicleSourceProviderType.DealerJson,
+                SourceType = VehicleSourceType.File,
+                IsShared = true,
+                IsActive = true,
+            });
+        }
+
+        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+    }
+
     private async Task SeedExchangeRatesAsync(CancellationToken ct)
     {
         (string Quote, decimal Rate)[] rates =
@@ -279,6 +330,8 @@ public sealed class DatabaseSeeder
 
     private async Task SeedDevelopmentFixtureAsync(CancellationToken ct)
     {
+        await SeedSampleImportSourcesAsync(ct).ConfigureAwait(false);
+
         var nihon = await EnsureTenantAsync(NihonPublicId, NihonSlug, "Nihon Motors", "JPY", "JP", ct)
             .ConfigureAwait(false);
 

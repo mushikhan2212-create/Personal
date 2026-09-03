@@ -179,6 +179,65 @@ normally, the sync endpoint answers 503, and search over already-synced data is 
 
 Rotate the key if it has ever been pasted into a chat window, a ticket, or a commit.
 
+## Trying it end to end
+
+Fifteen minutes from a clean clone to a searchable catalogue of 400 cars. Every number below
+is what you should actually see.
+
+**1. Start the dependencies.** Only SQL Server and Redis run in Docker; the API runs from
+Visual Studio.
+
+```bash
+cd backend
+docker compose up -d sqlserver redis
+```
+
+**2. Run the API.** Press F5 in Visual Studio, or `dotnet run --project src/CarDealer.Api`.
+It migrates and seeds on startup. Watch for `Now listening on: http://localhost:5246` — that
+port matters in step 3.
+
+**3. Run the frontend.**
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+It prints `API proxy: /api -> http://localhost:5246`. If your API printed a different port,
+set `VITE_API_URL` in `frontend/.env.local` and restart.
+
+**4. Sign in** at http://localhost:5173 as `owner@nihon-motors.test` / `Dev_Passw0rd!`
+(pre-filled). The catalogue is empty — nothing has been imported yet.
+
+**5. Import the sample data.** Click **Import vehicles**, choose source **Exporter A**, pick
+`docs/spec/examples/import-exporter-a.json`, and click **Check without importing** first:
+
+> would create 240 · 21 with no VIN, chassis or lot number · nothing written
+
+Then **Import**. Now repeat with **Exporter B** and `import-exporter-b.json`:
+
+> created 160 · **merged with existing 25**
+
+Those 25 are the same physical cars offered by both exporters, matched on their chassis
+numbers. That number is the whole point of the exercise.
+
+**6. Look at the catalogue.** Back on search you should see **363 cars** — not 400, because 25
+merged and the rest were marked unavailable by the file. Then:
+
+- **Filter by price.** Under $5,000 gives 327; $5,000–$15,000 gives 35. These only work
+  because the FX step converted every JPY price and pinned the rate it used (decision D6).
+- **Sort by price**, low to high and high to low. Both were meaningless before that step.
+- **Find an aggregated car** — a card reading *"2 offers from 2 sources — cheapest shown"*.
+  Click it. The detail page lists both exporters' offers side by side, and the bottom panel
+  says which identifier they were matched on.
+- **Click a car with no identifier.** That same panel says plainly that it cannot be merged
+  with the same car from another source. With Japanese stock this is common, and the screen
+  says so rather than implying a judgement was made.
+
+The sample photos point at `picsum.photos`, so they need internet access to render. Everything
+else works offline.
+
 ## Importing vehicles from a file
 
 The platform does not fetch from exporter websites (decision D13). It accepts data, and where
