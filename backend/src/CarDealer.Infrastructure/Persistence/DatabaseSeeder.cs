@@ -56,6 +56,7 @@ public sealed class DatabaseSeeder
         await SeedPermissionsAsync(ct).ConfigureAwait(false);
         await SeedSystemRolesAsync(ct).ConfigureAwait(false);
         await SeedVehicleSourcesAsync(ct).ConfigureAwait(false);
+        await SeedExchangeRatesAsync(ct).ConfigureAwait(false);
 
         if (includeDevelopmentUsers)
         {
@@ -119,6 +120,57 @@ public sealed class DatabaseSeeder
                 BaseUrl = baseUrl,
                 IsShared = true,
                 IsActive = true,
+            });
+        }
+
+        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Seeds a starting FX rate per currency the catalog quotes in (decision D6).
+    /// </summary>
+    /// <remarks>
+    /// Reference data, not a development fixture: without a rate for a currency, every listing
+    /// priced in it has a null base price, which excludes it from price range filters and puts
+    /// it at the end of every price sort. A catalog that cannot be filtered by budget is not
+    /// much of a catalog.
+    ///
+    /// Rates are append-only and quoted as units per USD. These are indicative starting values
+    /// with an explicit Source of "seed" so nobody mistakes them for a market feed - replacing
+    /// them means inserting newer rows, never editing these, because listings pin the row they
+    /// used and rewriting it would retroactively change historical prices.
+    /// </remarks>
+    private async Task SeedExchangeRatesAsync(CancellationToken ct)
+    {
+        (string Quote, decimal Rate)[] rates =
+        [
+            ("JPY", 150.00m),
+            ("KRW", 1_380.00m),
+            ("EUR", 0.92m),
+            ("GBP", 0.79m),
+            ("AED", 3.67m),
+            ("PKR", 278.00m),
+            ("KES", 129.00m),
+        ];
+
+        foreach (var (quote, rate) in rates)
+        {
+            var exists = await _db.ExchangeRates
+                .AnyAsync(r => r.BaseCurrencyCode == "USD" && r.QuoteCurrencyCode == quote, ct)
+                .ConfigureAwait(false);
+
+            if (exists)
+            {
+                continue;
+            }
+
+            _db.ExchangeRates.Add(new ExchangeRate
+            {
+                BaseCurrencyCode = "USD",
+                QuoteCurrencyCode = quote,
+                Rate = rate,
+                AsOfUtc = _clock.UtcNow,
+                Source = "seed",
             });
         }
 

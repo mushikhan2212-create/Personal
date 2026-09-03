@@ -122,6 +122,7 @@ public sealed class VehicleSyncService
     private readonly IVehicleSourceDetailProvider? _detailProvider;
     private readonly IReadOnlyDictionary<VehicleSourceProviderType, IVehicleRecordNormalizer> _normalizers;
     private readonly IDateTimeProvider _clock;
+    private readonly IExchangeRateService _fx;
     private readonly ILogger<VehicleSyncService> _logger;
 
     /// <summary>
@@ -138,6 +139,7 @@ public sealed class VehicleSyncService
         CarDealerDbContext db,
         IEnumerable<IVehicleRecordNormalizer> normalizers,
         IDateTimeProvider clock,
+        IExchangeRateService fx,
         ILogger<VehicleSyncService> logger,
         IVehicleSourceSyncProvider? provider = null,
         IVehicleSourceDetailProvider? detailProvider = null)
@@ -151,6 +153,7 @@ public sealed class VehicleSyncService
         _normalizers = normalizers.ToDictionary(n => n.ProviderType);
 
         _clock = clock;
+        _fx = fx;
         _logger = logger;
         _detailProvider = detailProvider;
     }
@@ -529,6 +532,27 @@ public sealed class VehicleSyncService
         };
     }
 
+    /// <summary>Fills in the base-currency price and the rate it was pinned to.</summary>
+    private async Task ApplyBasePriceAsync(VehicleListing listing, CancellationToken ct)
+    {
+        if (listing.Price is not { } price)
+        {
+            return;
+        }
+
+        var converted = await _fx.ToBaseAsync(price, listing.CurrencyCode, ct).ConfigureAwait(false);
+
+        if (converted is not { } result)
+        {
+            // No rate for this currency. Left null deliberately - see IExchangeRateService.
+            return;
+        }
+
+        listing.PriceBaseCurrency = result.Amount;
+        listing.BaseCurrencyCode = _fx.BaseCurrencyCode;
+        listing.ExchangeRateId = result.ExchangeRateId;
+    }
+
     private enum UpsertOutcome { Created, Updated, MergedIntoExisting, Skipped }
 
     private async Task<UpsertOutcome> UpsertAsync(
@@ -572,6 +596,12 @@ public sealed class VehicleSyncService
             image.TenantId = owner;
         }
 
+        // Decision D6: the base-currency price is derived here, not by the normalizer, and the
+        // rate that produced it is pinned by id. A listing whose currency has no stored rate
+        // keeps a null base price and stays out of range filters - a car whose price cannot be
+        // compared is not a cheap car.
+        await ApplyBasePriceAsync(normalized.Listing, ct).ConfigureAwait(false);
+
         var externalId = normalized.Listing.ExternalListingId;
 
         // Re-ingesting a listing we already hold. IgnoreQueryFilters because this runs with no
@@ -587,6 +617,12 @@ public sealed class VehicleSyncService
         {
             existingListing.Price = normalized.Listing.Price;
             existingListing.CurrencyCode = normalized.Listing.CurrencyCode;
+
+            // Re-converted on every sync, because the price may have changed and the rate will
+            // have. Both move together or the pinned rate stops explaining the stored number.
+            existingListing.PriceBaseCurrency = normalized.Listing.PriceBaseCurrency;
+            existingListing.BaseCurrencyCode = normalized.Listing.BaseCurrencyCode;
+            existingListing.ExchangeRateId = normalized.Listing.ExchangeRateId;
             existingListing.LastSeenAtUtc = normalized.Listing.LastSeenAtUtc;
             existingListing.LastSyncedAtUtc = normalized.Listing.LastSyncedAtUtc;
             existingListing.IsActive = normalized.Listing.IsActive;

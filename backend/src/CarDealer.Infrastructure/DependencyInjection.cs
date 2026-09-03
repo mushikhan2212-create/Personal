@@ -11,6 +11,7 @@ using CarDealer.Infrastructure.Auth;
 using CarDealer.Infrastructure.Caching;
 using CarDealer.Infrastructure.Jobs;
 using CarDealer.Infrastructure.Persistence;
+using CarDealer.Infrastructure.Pricing;
 using CarDealer.Infrastructure.Services;
 using CarDealer.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
@@ -65,6 +66,7 @@ public static class DependencyInjection
         // Search behind its abstraction (decision D4). Swapping in an engine later is a change
         // to this one line.
         services.AddScoped<ISearchProvider, SqlServerSearchProvider>();
+        services.AddScoped<IExchangeRateService, ExchangeRateService>();
 
         AddVehicleSources(services, configuration);
 

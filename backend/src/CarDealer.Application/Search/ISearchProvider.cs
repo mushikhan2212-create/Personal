@@ -141,6 +141,16 @@ public sealed record VehicleSearchHit
     /// The tenant's own price from their overlay, when they have set one. Never another
     /// tenant's - the overlay is strictly tenant-owned.
     /// </summary>
+    /// <summary>How many listings offer this car, across all sources.</summary>
+    /// <remarks>
+    /// Surfaced because deduplication is otherwise invisible. A merged vehicle looks identical
+    /// to one that was never duplicated, so the work that decision D3 does silently would
+    /// never show up on screen - and a POC has to be able to demonstrate the thing it claims.
+    /// </remarks>
+    public int OfferCount { get; init; } = 1;
+
+    public int SourceCount { get; init; } = 1;
+
     public decimal? TenantPrice { get; init; }
 
     public string? TenantCurrencyCode { get; init; }

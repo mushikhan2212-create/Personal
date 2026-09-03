@@ -149,60 +149,174 @@ public sealed class SqlServerSearchProvider : ISearchProvider
         // DbContext, so this can never surface another tenant's price or honour their hiding.
         var overlays = _db.TenantVehicles.AsNoTracking();
 
-        var projected =
+        var joined =
             from l in listings
             join o in overlays on l.VehicleId equals o.VehicleId into overlayGroup
             from overlay in overlayGroup.DefaultIfEmpty()
             where overlay == null || !overlay.IsHidden
             select new { Listing = l, Overlay = overlay };
 
-        var total = await projected.CountAsync(ct).ConfigureAwait(false);
+        // One row per CAR, not per listing.
+        //
+        // A vehicle offered by three exporters has three listings, and returning them
+        // individually puts the same physical car on screen three times - which makes
+        // deduplication look broken precisely when it has just worked. The listings stay
+        // separate in the data, as master prompt section 7 requires; what changes is that
+        // search answers "which cars match", and the detail view answers "who is offering
+        // this one, and at what price".
+        //
+        // The representative offer is the cheapest with a known base price, falling back to
+        // the most recently seen. Cheapest is what a buyer would act on, and a listing whose
+        // price could not be converted must not win by being null.
+        // Aggregate per vehicle. Only translatable aggregates are used - Count, Distinct
+        // Count, Min, Max - because an ordered First() inside a group projection does not
+        // translate to SQL, and discovering that at runtime is a 500 rather than a compile
+        // error. The grouping key carries the fields sorting needs, so no join back is
+        // required to order the page.
+        var grouped = joined
+            .GroupBy(x => new
+            {
+                x.Listing.VehicleId,
+                x.Listing.Vehicle.ModelYear,
+                x.Listing.Vehicle.Mileage,
+            })
+            .Select(g => new
+            {
+                g.Key.VehicleId,
+                g.Key.ModelYear,
+                g.Key.Mileage,
+                OfferCount = g.Count(),
+                SourceCount = g.Select(x => x.Listing.VehicleSourceId).Distinct().Count(),
 
-        projected = query.Sort switch
+                // SQL MIN ignores nulls, which is exactly right: the cheapest KNOWN price,
+                // with unconvertible listings neither winning nor excluding the car.
+                MinBasePrice = g.Min(x => x.Listing.PriceBaseCurrency),
+
+                // The freshest confirmation across all offers. A car one exporter last saw
+                // six weeks ago and another saw yesterday is a car seen yesterday.
+                LastSeenAtUtc = g.Max(x => x.Listing.LastSeenAtUtc),
+            });
+
+        var total = await grouped.CountAsync(ct).ConfigureAwait(false);
+
+        grouped = query.Sort switch
         {
             VehicleSearchSort.PriceAscending =>
-                projected.OrderBy(x => x.Listing.PriceBaseCurrency ?? decimal.MaxValue),
+                grouped.OrderBy(x => x.MinBasePrice ?? decimal.MaxValue),
             VehicleSearchSort.PriceDescending =>
-                projected.OrderByDescending(x => x.Listing.PriceBaseCurrency ?? decimal.MinValue),
+                grouped.OrderByDescending(x => x.MinBasePrice ?? decimal.MinValue),
             VehicleSearchSort.YearDescending =>
-                projected.OrderByDescending(x => x.Listing.Vehicle.ModelYear ?? 0),
+                grouped.OrderByDescending(x => x.ModelYear ?? 0),
             VehicleSearchSort.MileageAscending =>
-                projected.OrderBy(x => x.Listing.Vehicle.Mileage ?? int.MaxValue),
-            _ => projected.OrderByDescending(x => x.Listing.LastSeenAtUtc),
+                grouped.OrderBy(x => x.Mileage ?? int.MaxValue),
+            _ => grouped.OrderByDescending(x => x.LastSeenAtUtc),
         };
 
-        var hits = await projected
+        var pageRows = await grouped
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(x => new VehicleSearchHit
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        var vehicleIds = pageRows.Select(r => r.VehicleId).ToList();
+
+        // A second query for the page's cars, rather than one clever query for everything.
+        // Bounded by the page size, so this is one extra round trip regardless of catalog
+        // size, and it keeps the aggregate query simple enough to be certain it translates.
+        var cars = await _db.Vehicles
+            .AsNoTracking()
+            .Where(v => vehicleIds.Contains(v.Id))
+            .Select(v => new
             {
-                PublicId = x.Listing.Vehicle.PublicId,
-                Make = x.Listing.Vehicle.Make,
-                Model = x.Listing.Vehicle.Model,
-                Variant = x.Listing.Vehicle.Variant,
-                ModelYear = x.Listing.Vehicle.ModelYear,
-                Mileage = x.Listing.Vehicle.Mileage,
-                MileageUnit = x.Listing.Vehicle.MileageUnit,
-                SteeringSide = x.Listing.Vehicle.SteeringSide,
-                FuelType = x.Listing.Vehicle.FuelType,
-                Transmission = x.Listing.Vehicle.Transmission,
-                Price = x.Listing.Price,
-                CurrencyCode = x.Listing.CurrencyCode,
-                PriceBaseCurrency = x.Listing.PriceBaseCurrency,
-                BaseCurrencyCode = x.Listing.BaseCurrencyCode,
-                PriceType = x.Listing.PriceType,
-                SourceName = x.Listing.VehicleSource.Name,
-                SourceUrl = x.Listing.SourceUrl,
-                PrimaryImageUrl = x.Listing.Vehicle.Images
-                    .OrderBy(i => i.SortOrder)
-                    .Select(i => i.ImageUrl)
+                v.Id,
+                v.PublicId,
+                v.Make,
+                v.Model,
+                v.Variant,
+                v.ModelYear,
+                v.Mileage,
+                v.MileageUnit,
+                v.SteeringSide,
+                v.FuelType,
+                v.Transmission,
+                PrimaryImageUrl = v.Images.OrderBy(i => i.SortOrder).Select(i => i.ImageUrl).FirstOrDefault(),
+
+                // The cheapest offer decides what the card shows, so price, currency, incoterm
+                // and attribution all come from the same listing. Mixing a minimum price with
+                // another listing's incoterm would put an FOB number under a CIF label.
+                Best = v.Listings
+                    .Where(l => l.IsActive)
+                    .OrderBy(l => l.PriceBaseCurrency == null ? 1 : 0)
+                    .ThenBy(l => l.PriceBaseCurrency)
+                    .ThenByDescending(l => l.LastSeenAtUtc)
+                    .Select(l => new
+                    {
+                        l.Price,
+                        l.CurrencyCode,
+                        l.PriceBaseCurrency,
+                        l.BaseCurrencyCode,
+                        l.PriceType,
+                        SourceName = l.VehicleSource.Name,
+                        l.SourceUrl,
+                    })
                     .FirstOrDefault(),
-                LastSeenAtUtc = x.Listing.LastSeenAtUtc,
-                TenantPrice = x.Overlay != null ? x.Overlay.TenantPrice : null,
-                TenantCurrencyCode = x.Overlay != null ? x.Overlay.TenantCurrencyCode : null,
             })
             .ToListAsync(ct)
             .ConfigureAwait(false);
+
+        var overlayById = await _db.TenantVehicles
+            .AsNoTracking()
+            .Where(o => vehicleIds.Contains(o.VehicleId))
+            .ToDictionaryAsync(o => o.VehicleId, ct)
+            .ConfigureAwait(false);
+
+        var carById = cars.ToDictionary(c => c.Id);
+
+        // Assembled in the page's order, which the database already decided. Re-sorting here
+        // would silently ignore the sort the caller asked for.
+        var hits = new List<VehicleSearchHit>(pageRows.Count);
+
+        foreach (var row in pageRows)
+        {
+            if (!carById.TryGetValue(row.VehicleId, out var car))
+            {
+                continue;
+            }
+
+            overlayById.TryGetValue(row.VehicleId, out var overlay);
+
+            hits.Add(new VehicleSearchHit
+            {
+                PublicId = car.PublicId,
+                Make = car.Make,
+                Model = car.Model,
+                Variant = car.Variant,
+                ModelYear = car.ModelYear,
+                Mileage = car.Mileage,
+                MileageUnit = car.MileageUnit,
+                SteeringSide = car.SteeringSide,
+                FuelType = car.FuelType,
+                Transmission = car.Transmission,
+                Price = car.Best?.Price,
+                CurrencyCode = car.Best?.CurrencyCode,
+                PriceBaseCurrency = car.Best?.PriceBaseCurrency,
+                BaseCurrencyCode = car.Best?.BaseCurrencyCode,
+                PriceType = car.Best?.PriceType ?? PriceType.Unknown,
+
+                // Attribution names one source only when there is one. Putting a single
+                // exporter's name on a card that aggregates three would misattribute the
+                // other two, and attribution is a POC acceptance criterion.
+                SourceName = row.SourceCount == 1 ? car.Best?.SourceName : null,
+                SourceUrl = row.SourceCount == 1 ? car.Best?.SourceUrl : null,
+
+                PrimaryImageUrl = car.PrimaryImageUrl,
+                LastSeenAtUtc = row.LastSeenAtUtc,
+                OfferCount = row.OfferCount,
+                SourceCount = row.SourceCount,
+                TenantPrice = overlay?.TenantPrice,
+                TenantCurrencyCode = overlay?.TenantCurrencyCode,
+            });
+        }
 
         stopwatch.Stop();
 

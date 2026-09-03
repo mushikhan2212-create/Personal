@@ -97,6 +97,7 @@ public sealed class VehicleSyncServiceTests : IClassFixture<ApiFactory>
             db,
             [new CarapisNormalizer(), new ImportNormalizer()],
             scope.ServiceProvider.GetRequiredService<IDateTimeProvider>(),
+            scope.ServiceProvider.GetRequiredService<IExchangeRateService>(),
             NullLogger<VehicleSyncService>.Instance,
             provider);
 
