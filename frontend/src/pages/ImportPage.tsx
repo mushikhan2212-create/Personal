@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import {
-  Alert, Button, Card, Descriptions, Flex, Select, Space, Statistic, Typography, Upload,
+  Alert, Button, Card, Descriptions, Empty, Flex, Form, Input, Modal, Select, Space, Statistic,
+  Switch, Typography, Upload,
 } from 'antd';
 import type { UploadFile } from 'antd/es/upload/interface';
-import { importFile, listSources } from '../api/client';
+import { createSource, importFile, listSources } from '../api/client';
 import type { ImportResult, VehicleSourceSummary } from '../api/types';
 
 interface Props {
@@ -25,18 +26,42 @@ export function ImportPage({ onBack, onImported }: Props) {
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [registering, setRegistering] = useState(false);
+  const [form] = Form.useForm<{ code: string; name: string; isShared: boolean }>();
 
-  useEffect(() => {
+  const loadSources = (select?: string): void => {
     listSources()
       .then((all) => {
         // Only DealerJson sources can read this format. Offering the others would let someone
         // pick a source that answers 400, which is a worse experience than not offering it.
         const importable = all.filter((s) => s.providerType === 'DealerJson');
         setSources(importable);
-        setCode(importable[0]?.code);
+        setCode(select ?? importable[0]?.code);
       })
       .catch(() => setError('Could not load the source list.'));
-  }, []);
+  };
+
+  useEffect(() => loadSources(), []);
+
+  const register = async (): Promise<void> => {
+    const values = await form.validateFields();
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      const created = await createSource(values);
+      setRegistering(false);
+      form.resetFields();
+
+      // Select what was just created: the reason for creating it was to import into it.
+      loadSources(created.code);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not register the source.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const run = async (dryRun: boolean): Promise<void> => {
     const raw = file?.originFileObj;
@@ -68,24 +93,49 @@ export function ImportPage({ onBack, onImported }: Props) {
 
       <Card size="small">
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
-          <div>
-            <Typography.Text strong>Source</Typography.Text>
-            <Select
-              style={{ width: '100%', marginTop: 4 }}
-              value={code}
-              onChange={setCode}
-              placeholder="No import-capable source is registered"
-              options={sources.map((s) => ({
-                value: s.code,
-                label: `${s.name} (${s.code}) — ${s.vehicleCount.toLocaleString()} listing(s)`,
-              }))}
-            />
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              Only sources registered as DealerJson can read this format. Every imported car is
-              attributed to the source you pick.
-            </Typography.Text>
-          </div>
+          {/* An empty list is the one state that needs to explain itself. It happens on a
+              database seeded before import existed, and the only way out is to register a
+              source - so the way out is on the screen rather than in the README. */}
+          {sources.length === 0 ? (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={
+                <Space direction="vertical" size={4}>
+                  <Typography.Text strong>No source can accept an import yet</Typography.Text>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    Importing needs a source registered as DealerJson. Register one here, or
+                    restart the API — it seeds several on startup.
+                  </Typography.Text>
+                </Space>
+              }
+            >
+              <Button type="primary" onClick={() => setRegistering(true)}>Register a source</Button>
+            </Empty>
+          ) : (
+            <div>
+              <Flex justify="space-between" align="baseline">
+                <Typography.Text strong>Source</Typography.Text>
+                <Button size="small" type="link" onClick={() => setRegistering(true)}>
+                  Register another
+                </Button>
+              </Flex>
+              <Select
+                style={{ width: '100%', marginTop: 4 }}
+                value={code}
+                onChange={setCode}
+                options={sources.map((s) => ({
+                  value: s.code,
+                  label: `${s.name} (${s.code}) — ${s.vehicleCount.toLocaleString()} listing(s)`,
+                }))}
+              />
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Every imported car is attributed to the source you pick.
+              </Typography.Text>
+            </div>
+          )}
 
+          {sources.length > 0 && (
+          <>
           <Upload
             accept="application/json,.json"
             maxCount={1}
@@ -119,10 +169,51 @@ export function ImportPage({ onBack, onImported }: Props) {
             Check first on an unfamiliar file. It reports exactly what an import would do and
             writes nothing.
           </Typography.Text>
+          </>
+          )}
         </Space>
       </Card>
 
       {error && <Alert type="error" showIcon message={error} />}
+
+      <Modal
+        title="Register a vehicle source"
+        open={registering}
+        onCancel={() => setRegistering(false)}
+        onOk={() => void register()}
+        confirmLoading={busy}
+        okText="Register"
+      >
+        <Form form={form} layout="vertical" initialValues={{ isShared: true }}>
+          <Form.Item
+            name="code"
+            label="Code"
+            rules={[
+              { required: true, message: 'A code is required.' },
+              {
+                pattern: /^[a-z0-9][a-z0-9_-]{0,63}$/,
+                message: 'Lower-case letters, digits, hyphens and underscores.',
+              },
+            ]}
+            help="Appears in URLs, and must match the sourceCode inside the file if it states one."
+          >
+            <Input placeholder="beforward" />
+          </Form.Item>
+
+          <Form.Item name="name" label="Name" rules={[{ required: true, message: 'A name is required.' }]}>
+            <Input placeholder="BE FORWARD" />
+          </Form.Item>
+
+          <Form.Item
+            name="isShared"
+            label="Shared catalogue"
+            valuePropName="checked"
+            help="On, every tenant sees these cars. Off, they stay private to your tenant."
+          >
+            <Switch />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       {result && (
         <Card

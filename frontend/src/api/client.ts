@@ -165,6 +165,33 @@ export const syncSource = (
     { method: 'POST' },
   );
 
+export interface CreateSourceRequest {
+  code: string;
+  name: string;
+  providerType?: string;
+  sourceType?: string;
+  baseUrl?: string;
+  isShared?: boolean;
+}
+
+/**
+ * Registers a vehicle source.
+ *
+ * Defaults to a shared DealerJson/File source, because that is the only combination an import
+ * can actually use: the sync pipeline picks its normalizer from the provider type, so a source
+ * registered as anything else cannot read the import format.
+ */
+export const createSource = (source: CreateSourceRequest): Promise<VehicleSourceSummary> =>
+  request<VehicleSourceSummary>('/vehicle-sources', {
+    method: 'POST',
+    body: JSON.stringify({
+      providerType: 'DealerJson',
+      sourceType: 'File',
+      isShared: true,
+      ...source,
+    }),
+  });
+
 export const getVehicle = (id: string): Promise<VehicleDetail> =>
   request<VehicleDetail>(`/vehicles/${encodeURIComponent(id)}`);
 
