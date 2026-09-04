@@ -14,53 +14,86 @@ namespace CarDealer.Integrations.FileImport;
 public sealed class VehicleImportDocument
 {
     /// <summary>Which registered VehicleSource these records belong to.</summary>
-    [JsonPropertyName("sourceCode")] public string? SourceCode { get; init; }
+    public string? SourceCode { get; init; }
 
     /// <summary>When this document was produced. Informational; per-vehicle times govern.</summary>
-    [JsonPropertyName("capturedAtUtc")] public DateTime? CapturedAtUtc { get; init; }
+    public DateTime? CapturedAtUtc { get; init; }
 
-    [JsonPropertyName("vehicles")] public List<VehicleImportRecord> Vehicles { get; init; } = [];
+    public List<VehicleImportRecord> Vehicles { get; init; } = [];
 }
 
-/// <summary>One vehicle as supplied by an import.</summary>
+/// <summary>
+/// One vehicle as supplied by an import.
+/// </summary>
+/// <remarks>
+/// Populated by <see cref="VehicleImportRecordConverter"/>, which accepts both camelCase and
+/// snake_case for every field plus a few source-specific aliases. The property names here are
+/// the canonical spelling; the converter holds the list each one answers to.
+/// </remarks>
+[JsonConverter(typeof(VehicleImportRecordConverter))]
 public sealed class VehicleImportRecord
 {
+    /// <summary>The source's own headline, e.g. "2022 TOYOTA PASSO 1.0XLPKG".</summary>
+    /// <remarks>
+    /// Kept because it is often the only place a grade appears - BE FORWARD publishes no
+    /// separate trim field, but writes it into the title. The normalizer derives a variant
+    /// from it when none is stated, and records that the value was inferred rather than given.
+    /// </remarks>
+    public string? Title { get; init; }
+
+    /// <summary>
+    /// The manufacturer's model code, e.g. M700A or 5BA-M700A.
+    /// </summary>
+    /// <remarks>
+    /// A specification, never an identifier. Every Toyota Passo of a generation carries M700A,
+    /// so two different cars share it - mapping this to ChassisNumber would merge every car of
+    /// a model into one vehicle. Stored so it can be displayed and searched, and deliberately
+    /// kept out of CanonicalIdentity.
+    /// </remarks>
+    public string? ChassisCode { get; init; }
+
+    public int? Seats { get; init; }
+
+    public int? Doors { get; init; }
+
+    public string? ConditionNotes { get; init; }
+
     /// <summary>The producer's own stable id for this listing. Required.</summary>
-    [JsonPropertyName("externalId")] public string? ExternalId { get; init; }
+    public string? ExternalId { get; init; }
 
-    [JsonPropertyName("listingUrl")] public string? ListingUrl { get; init; }
+    public string? ListingUrl { get; init; }
 
-    [JsonPropertyName("make")] public string? Make { get; init; }
+    public string? Make { get; init; }
 
-    [JsonPropertyName("model")] public string? Model { get; init; }
+    public string? Model { get; init; }
 
-    [JsonPropertyName("variant")] public string? Variant { get; init; }
+    public string? Variant { get; init; }
 
-    [JsonPropertyName("year")] public int? Year { get; init; }
+    public int? Year { get; init; }
 
-    [JsonPropertyName("mileage")] public int? Mileage { get; init; }
+    public int? Mileage { get; init; }
 
     /// <summary>"km" or "mi". Absent leaves the unit Unknown rather than assuming kilometres.</summary>
-    [JsonPropertyName("mileageUnit")] public string? MileageUnit { get; init; }
+    public string? MileageUnit { get; init; }
 
     /// <summary>"rhd" / "lhd". The export trade's most-used filter (decision D5).</summary>
-    [JsonPropertyName("steering")] public string? Steering { get; init; }
+    public string? Steering { get; init; }
 
-    [JsonPropertyName("fuelType")] public string? FuelType { get; init; }
+    public string? FuelType { get; init; }
 
-    [JsonPropertyName("transmission")] public string? Transmission { get; init; }
+    public string? Transmission { get; init; }
 
-    [JsonPropertyName("drivetrain")] public string? Drivetrain { get; init; }
+    public string? Drivetrain { get; init; }
 
-    [JsonPropertyName("bodyType")] public string? BodyType { get; init; }
+    public string? BodyType { get; init; }
 
-    [JsonPropertyName("engineCc")] public int? EngineCc { get; init; }
+    public int? EngineCc { get; init; }
 
-    [JsonPropertyName("exteriorColor")] public string? ExteriorColor { get; init; }
+    public string? ExteriorColor { get; init; }
 
-    [JsonPropertyName("price")] public decimal? Price { get; init; }
+    public decimal? Price { get; init; }
 
-    [JsonPropertyName("currency")] public string? Currency { get; init; }
+    public string? Currency { get; init; }
 
     /// <summary>
     /// The incoterm: "FOB", "CIF", "CFR", "EXW". Optional, and absent means Unknown.
@@ -70,29 +103,29 @@ public sealed class VehicleImportRecord
     /// vehicle synced from it prices as Unknown. FOB and CIF differ by the entire cost of
     /// shipping, so an unstated incoterm is left unstated rather than assumed.
     /// </remarks>
-    [JsonPropertyName("priceType")] public string? PriceType { get; init; }
+    public string? PriceType { get; init; }
 
-    [JsonPropertyName("vin")] public string? Vin { get; init; }
+    public string? Vin { get; init; }
 
-    [JsonPropertyName("chassisNumber")] public string? ChassisNumber { get; init; }
+    public string? ChassisNumber { get; init; }
 
-    [JsonPropertyName("lotNumber")] public string? LotNumber { get; init; }
+    public string? LotNumber { get; init; }
 
-    [JsonPropertyName("locationCountry")] public string? LocationCountry { get; init; }
+    public string? LocationCountry { get; init; }
 
-    [JsonPropertyName("locationCity")] public string? LocationCity { get; init; }
+    public string? LocationCity { get; init; }
 
-    [JsonPropertyName("portOfLoading")] public string? PortOfLoading { get; init; }
+    public string? PortOfLoading { get; init; }
 
     /// <summary>ISO country codes this listing can ship to, for the coverage filter.</summary>
-    [JsonPropertyName("destinationMarkets")] public List<string> DestinationMarkets { get; init; } = [];
+    public List<string> DestinationMarkets { get; init; } = [];
 
-    [JsonPropertyName("imageUrls")] public List<string> ImageUrls { get; init; } = [];
+    public List<string> ImageUrls { get; init; } = [];
 
     /// <summary>
     /// Whether the source still offers this car. Tri-state: absent means it did not say.
     /// </summary>
-    [JsonPropertyName("isAvailable")] public bool? IsAvailable { get; init; }
+    public bool? IsAvailable { get; init; }
 
     /// <summary>
     /// When the producer last confirmed this listing exists. Required.
@@ -104,7 +137,7 @@ public sealed class VehicleImportRecord
     /// frozen at capture and a car sold weeks ago still read as for sale. An import that cannot
     /// say when it last saw a car is importing that same problem.
     /// </remarks>
-    [JsonPropertyName("lastSeenAtUtc")] public DateTime? LastSeenAtUtc { get; init; }
+    public DateTime? LastSeenAtUtc { get; init; }
 
-    [JsonPropertyName("firstSeenAtUtc")] public DateTime? FirstSeenAtUtc { get; init; }
+    public DateTime? FirstSeenAtUtc { get; init; }
 }

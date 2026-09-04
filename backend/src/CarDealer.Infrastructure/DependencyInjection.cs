@@ -2,6 +2,7 @@ using CarDealer.Application.Abstractions;
 using CarDealer.Application.Search;
 using CarDealer.Application.VehicleSources;
 using CarDealer.Infrastructure.Search;
+using CarDealer.Infrastructure.Sources;
 using CarDealer.Infrastructure.Sync;
 using CarDealer.Integrations.Carapis;
 using CarDealer.Integrations.FileImport;
@@ -125,6 +126,7 @@ public static class DependencyInjection
         services.AddScoped<IVehicleRecordNormalizer, ImportNormalizer>();
 
         services.AddScoped<VehicleSyncService>();
+        services.AddScoped<VehicleSourceRemovalService>();
     }
 
     private static void AddCaching(

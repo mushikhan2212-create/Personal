@@ -550,7 +550,11 @@ public sealed class VehicleSyncService
 
         listing.PriceBaseCurrency = result.Amount;
         listing.BaseCurrencyCode = _fx.BaseCurrencyCode;
-        listing.ExchangeRateId = result.ExchangeRateId;
+
+        // Zero means no conversion took place - the price was already in the base currency -
+        // so there is no rate row to reference. Decision D6 requires a converted price to name
+        // the rate that produced it; an unconverted one has none to name.
+        listing.ExchangeRateId = result.ExchangeRateId == 0 ? null : result.ExchangeRateId;
     }
 
     private enum UpsertOutcome { Created, Updated, MergedIntoExisting, Skipped }

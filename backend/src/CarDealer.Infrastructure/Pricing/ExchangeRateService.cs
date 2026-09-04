@@ -46,9 +46,17 @@ public sealed class ExchangeRateService : IExchangeRateService
 
         if (string.Equals(code, BaseCurrencyCode, StringComparison.OrdinalIgnoreCase))
         {
-            // Already in the base currency. There is no rate row to pin, and inventing an
-            // identity rate would put a fiction in the audit trail.
-            return null;
+            // Already in the base currency: comparable as it stands, at a rate of one.
+            //
+            // Returning null here would have been tidier - there is no rate row to point at -
+            // but it made every USD-priced car invisible to price filters and sorting, because
+            // search excludes a null base price. A price that needs no conversion is the most
+            // comparable price there is; refusing to record it because no conversion happened
+            // confuses "no rate was needed" with "no rate was available".
+            //
+            // ExchangeRateId stays null, which is honest: nothing was converted, so there is
+            // no rate to explain. The identity rate is stated rather than invented.
+            return new CurrencyConversion(amount, ExchangeRateId: 0, Rate: 1m);
         }
 
         if (!_cache.TryGetValue(code, out var cached))

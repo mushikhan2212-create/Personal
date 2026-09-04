@@ -35,19 +35,25 @@ public sealed class ImportNormalizer : IVehicleRecordNormalizer
             return null;
         }
 
-        // lastSeenAtUtc is the one required field, and a record without it is rejected rather
-        // than back-filled with "now". Defaulting it would assert the car was confirmed today
-        // when nobody confirmed anything - which is precisely the false freshness that made the
-        // previous source unusable.
-        if (dto.LastSeenAtUtc is null)
-        {
-            return null;
-        }
+        // Freshness falls back to when the document was captured - RetrievedAtUtc, which the
+        // provider took from the file's capturedAtUtc. Producers rarely stamp each row, and
+        // the document already answers the question honestly: every record in it was seen when
+        // it was made. What is never substituted is "now" at import time, because that would
+        // assert a confirmation nobody made - the exact false freshness that made the previous
+        // source unusable.
+        var lastSeen = dto.LastSeenAtUtc ?? record.RetrievedAtUtc;
 
         var vin = CanonicalIdentity.Normalize(dto.Vin);
         var chassis = CanonicalIdentity.Normalize(dto.ChassisNumber);
+
+        // The lot number is the source's own stock id. It identifies the car within this
+        // source and nowhere else, which is exactly what CanonicalIdentity does with it -
+        // hashing it together with the source id. ChassisCode is deliberately absent here:
+        // it names a model, not a car, so two different Passos share one.
         var lot = CanonicalIdentity.Normalize(dto.LotNumber);
         var (hash, hashSource) = CanonicalIdentity.Build(vin, chassis, vehicleSourceId, lot);
+
+        var inferred = new List<string>();
 
         var vehicle = new Vehicle
         {
@@ -55,7 +61,7 @@ public sealed class ImportNormalizer : IVehicleRecordNormalizer
             PublicId = Guid.NewGuid(),
             Make = Blank(dto.Make),
             Model = Blank(dto.Model),
-            Variant = Blank(dto.Variant),
+            Variant = Blank(dto.Variant) ?? VariantFromTitle(dto, inferred),
             ModelYear = dto.Year,
             BodyType = Blank(dto.BodyType),
             EngineDisplacementCc = dto.EngineCc,
@@ -71,6 +77,13 @@ public sealed class ImportNormalizer : IVehicleRecordNormalizer
             MileageUnit = ParseMileageUnit(dto.MileageUnit),
 
             ExteriorColor = Blank(dto.ExteriorColor),
+            Doors = ToByte(dto.Doors),
+            Seats = ToByte(dto.Seats),
+            Condition = Blank(dto.ConditionNotes),
+
+            // A model code, stored as the specification it is. Searchable and displayable,
+            // and never fed to CanonicalIdentity.
+            Engine = Blank(dto.ChassisCode),
             Vin = vin,
             ChassisNumber = chassis,
             LotNumber = lot,
@@ -104,8 +117,8 @@ public sealed class ImportNormalizer : IVehicleRecordNormalizer
             LocationCountryCode = Blank(dto.LocationCountry)?.ToUpperInvariant(),
             LocationCity = Blank(dto.LocationCity),
             RawPayload = record.RawPayload,
-            FirstSeenAtUtc = dto.FirstSeenAtUtc ?? dto.LastSeenAtUtc.Value,
-            LastSeenAtUtc = dto.LastSeenAtUtc.Value,
+            FirstSeenAtUtc = dto.FirstSeenAtUtc ?? lastSeen,
+            LastSeenAtUtc = lastSeen,
             LastSyncedAtUtc = record.RetrievedAtUtc,
             IsActive = dto.IsAvailable ?? true,
         };
@@ -126,9 +139,10 @@ public sealed class ImportNormalizer : IVehicleRecordNormalizer
             Listing = listing,
             Images = images,
 
-            // Nothing is inferred here. Every value above was either stated by the document or
-            // left Unknown, which is the advantage of owning the format.
-            InferredFields = [],
+            // Almost nothing is inferred - the advantage of owning the format. The exception
+            // is a variant read out of the title, which is recorded so a derived grade is never
+            // mistaken for one the source stated.
+            InferredFields = inferred,
         };
     }
 
@@ -141,6 +155,55 @@ public sealed class ImportNormalizer : IVehicleRecordNormalizer
             .Where(d => !string.IsNullOrWhiteSpace(d))
             .Select(d => d.Trim())
             .ToList() ?? [];
+    }
+
+    private static byte? ToByte(int? value)
+        => value is >= 0 and <= 255 ? (byte)value.Value : null;
+
+    /// <summary>
+    /// Pulls a grade out of the source's headline when no variant field was supplied.
+    /// </summary>
+    /// <remarks>
+    /// BE FORWARD publishes no trim field but writes it into the title: "2022 TOYOTA PASSO
+    /// 1.0XLPKG". Stripping the year, make and model leaves the grade. Nothing is invented -
+    /// when what remains is empty, the variant stays null rather than becoming the whole title,
+    /// which would put "2022 TOYOTA PASSO" in a field meant for "1.0XLPKG".
+    /// </remarks>
+    private static string? VariantFromTitle(VehicleImportRecord dto, List<string> inferred)
+    {
+        var title = Blank(dto.Title);
+
+        if (title is null)
+        {
+            return null;
+        }
+
+        var remainder = title;
+
+        foreach (var part in new[] { dto.Year?.ToString(), dto.Make, dto.Model })
+        {
+            if (string.IsNullOrWhiteSpace(part))
+            {
+                continue;
+            }
+
+            var at = remainder.IndexOf(part, StringComparison.OrdinalIgnoreCase);
+
+            if (at >= 0)
+            {
+                remainder = remainder.Remove(at, part.Length);
+            }
+        }
+
+        remainder = remainder.Trim();
+
+        if (remainder.Length == 0)
+        {
+            return null;
+        }
+
+        inferred.Add($"variant (read from title \"{title}\")");
+        return remainder;
     }
 
     private static string? Blank(string? value)

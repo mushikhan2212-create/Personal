@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Alert, App as AntApp, Button, Card, Col, Empty, Flex, Form, Input, InputNumber,
+  Alert, App as AntApp, Button, Card, Col, Empty, Flex, Form, Input, InputNumber, Modal,
   Pagination, Row, Select, Space, Spin, Statistic, Tag, Typography,
 } from 'antd';
-import { listSources, searchVehicles, syncSource } from '../api/client';
+import { deleteSource, listSources, searchVehicles, syncSource } from '../api/client';
 import type {
   VehicleSearchResponse, VehicleSearchSort, VehicleSourceSummary,
 } from '../api/types';
@@ -82,6 +82,44 @@ export function SearchPage({
   const submit = (): void => {
     setPage(1);
     void runSearch(1, filters);
+  };
+
+  const confirmDelete = (source: VehicleSourceSummary): void => {
+    Modal.confirm({
+      title: `Delete ${source.name}?`,
+      okText: 'Delete permanently',
+      okButtonProps: { danger: true },
+      width: 520,
+      content: (
+        <Space direction="vertical" size={8}>
+          <Typography.Text>
+            This removes the source, its {source.vehicleCount.toLocaleString()} listing(s) and
+            its sync history.
+          </Typography.Text>
+
+          {/* Said plainly, because the alternative is someone discovering it afterwards. */}
+          <Typography.Text>
+            A car another source also lists is kept. Only cars nothing else offers are deleted,
+            along with their photos and any prices you have set on them.
+          </Typography.Text>
+
+          <Typography.Text type="danger">This cannot be undone.</Typography.Text>
+        </Space>
+      ),
+      onOk: async () => {
+        const outcome = await deleteSource(source.code);
+
+        message.success(
+          `${source.code} deleted: ${outcome.listingsDeleted} listing(s) and `
+          + `${outcome.vehiclesDeleted} vehicle(s) removed, `
+          + `${outcome.vehiclesKept} kept because another source still lists them.`,
+          10,
+        );
+
+        await refreshSources();
+        void runSearch(1, filters);
+      },
+    });
   };
 
   const runSync = async (code: string, fetchDetail: boolean): Promise<void> => {
@@ -165,6 +203,10 @@ export function SearchPage({
                       title="Fetches each vehicle's detail record. Costs one request per vehicle, and is what makes deduplication and pricing work."
                     >
                       Sync + detail
+                    </Button>
+
+                    <Button size="small" danger onClick={() => confirmDelete(s)}>
+                      Delete
                     </Button>
                   </Space>
                 )}

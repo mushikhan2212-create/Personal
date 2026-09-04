@@ -48,11 +48,11 @@ public sealed class JsonFileVehicleProvider : IVehicleSourceSyncProvider
     /// </remarks>
     public static JsonFileVehicleProvider Read(Stream content, string sourceCode)
     {
-        VehicleImportDocument? document;
+        JsonDocument parsed;
 
         try
         {
-            document = JsonSerializer.Deserialize<VehicleImportDocument>(content, Json);
+            parsed = JsonDocument.Parse(content);
         }
         catch (JsonException ex)
         {
@@ -61,41 +61,117 @@ public sealed class JsonFileVehicleProvider : IVehicleSourceSyncProvider
                 + "See docs/spec/08-import-format.md for the expected shape.", ex);
         }
 
-        if (document is null)
+        using (parsed)
         {
-            throw new InvalidOperationException("The uploaded file was empty.");
-        }
+            var root = parsed.RootElement;
 
-        // A document naming a different source than the endpoint targets is a mistake worth
-        // catching: importing one exporter's stock under another's attributes every car to the
-        // wrong place, and attribution is a POC acceptance criterion.
-        if (!string.IsNullOrWhiteSpace(document.SourceCode)
-            && !string.Equals(document.SourceCode, sourceCode, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException(
-                $"This document declares sourceCode '{document.SourceCode}' but was posted to "
-                + $"'{sourceCode}'. Import it to the source it belongs to, or remove the "
-                + "sourceCode field to accept the endpoint's.");
-        }
-
-        var records = document.Vehicles
-            .Select((vehicle, index) => new RawVehicleRecord
+            if (root.ValueKind != JsonValueKind.Object)
             {
-                // Index as a fallback so a record missing its id still gets a distinct
-                // identifier to be reported under, rather than colliding with every other one.
-                ExternalId = string.IsNullOrWhiteSpace(vehicle.ExternalId)
-                    ? $"row-{index + 1}"
-                    : vehicle.ExternalId,
-                SourceCode = sourceCode,
-                RetrievedAtUtc = document.CapturedAtUtc ?? DateTime.UtcNow,
+                throw new InvalidOperationException(
+                    "The file must be an object with a 'vehicles' array, not a bare array. "
+                    + "See docs/spec/08-import-format.md.");
+            }
 
-                // Re-serialised per record so each row carries its own payload, which is what
-                // makes re-normalizing a stored record possible later without the file.
-                RawPayload = JsonSerializer.Serialize(vehicle, Json),
-            })
-            .ToList();
+            var declaredCode = DocumentString(root, "sourceCode", "source_code");
 
-        return new JsonFileVehicleProvider(sourceCode, records);
+            // A document naming a different source than the endpoint targets is a mistake worth
+            // catching: importing one exporter's stock under another's attributes every car to
+            // the wrong place, and attribution is a POC acceptance criterion.
+            if (!string.IsNullOrWhiteSpace(declaredCode)
+                && !string.Equals(declaredCode, sourceCode, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"This document declares sourceCode '{declaredCode}' but was posted to "
+                    + $"'{sourceCode}'. Import it to the source it belongs to, or remove the "
+                    + "sourceCode field to accept the endpoint's.");
+            }
+
+            if (!TryFind(root, ["vehicles", "records", "items"], out var vehicles)
+                || vehicles.ValueKind != JsonValueKind.Array)
+            {
+                throw new InvalidOperationException(
+                    "The file has no 'vehicles' array. See docs/spec/08-import-format.md.");
+            }
+
+            // When the document says when it was captured, that is when every record in it was
+            // last seen. Producers rarely stamp each row, and rejecting a whole file for a
+            // field the document already answers would be pedantry - but "now" is never
+            // substituted, because that would assert a confirmation nobody made.
+            var capturedAt = DocumentDate(root, "capturedAtUtc", "captured_at_utc", "capturedAt")
+                ?? DateTime.UtcNow;
+
+            var records = vehicles.EnumerateArray()
+                .Select((vehicle, index) => new RawVehicleRecord
+                {
+                    // Index as a fallback so a record missing its id still gets a distinct
+                    // identifier to be reported under, rather than colliding with every other.
+                    ExternalId = ExternalIdOf(vehicle) ?? $"row-{index + 1}",
+                    SourceCode = sourceCode,
+                    RetrievedAtUtc = capturedAt,
+
+                    // Stored verbatim, so re-normalizing a record later needs no file.
+                    RawPayload = vehicle.GetRawText(),
+                })
+                .ToList();
+
+            return new JsonFileVehicleProvider(sourceCode, records);
+        }
+    }
+
+    private static bool TryFind(JsonElement root, string[] names, out JsonElement value)
+    {
+        foreach (var name in names)
+        {
+            if (root.TryGetProperty(name, out value) && value.ValueKind != JsonValueKind.Null)
+            {
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
+    }
+
+    private static string? DocumentString(JsonElement root, params string[] names)
+        => TryFind(root, names, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static DateTime? DocumentDate(JsonElement root, params string[] names)
+        => DateTime.TryParse(
+            DocumentString(root, names),
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AdjustToUniversal
+                | System.Globalization.DateTimeStyles.AssumeUniversal,
+            out var parsed)
+            ? parsed
+            : null;
+
+    /// <summary>The record's own id, under any of the names producers use for it.</summary>
+    /// <remarks>
+    /// Returns null for anything that is not an object, rather than throwing. A bare string in
+    /// the vehicles array is one bad record, not a bad file, and failing here would reject the
+    /// whole upload - losing every good row alongside the one malformed one. It is carried
+    /// through instead, and fails on its own during normalization where it is counted.
+    /// </remarks>
+    private static string? ExternalIdOf(JsonElement vehicle)
+    {
+        if (vehicle.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        foreach (var name in new[] { "externalId", "stock_id", "stockId", "id", "listing_id", "listingId" })
+        {
+            if (vehicle.TryGetProperty(name, out var value)
+                && value.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(value.GetString()))
+            {
+                return value.GetString()!.Trim();
+            }
+        }
+
+        return null;
     }
 
     public Task<VehicleSourcePage> FetchPageAsync(

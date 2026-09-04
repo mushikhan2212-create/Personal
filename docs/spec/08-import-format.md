@@ -64,6 +64,43 @@ curl -X POST http://localhost:5246/api/v1/vehicle-sources \
 letters, digits, hyphens and underscores, and are unique within their scope — a duplicate
 returns 409.
 
+## Field names: both spellings are accepted
+
+The format is published in camelCase, but real producers emit snake_case, and a working
+scraper should not have to rename its output to satisfy a naming convention. Every field
+answers to both, plus a few names particular sources use:
+
+| Canonical | Also accepted |
+| --- | --- |
+| `externalId` | `stock_id`, `stockId`, `id`, `listing_id` |
+| `lastSeenAtUtc` | `last_seen_at`, `lastSeenAt` |
+| `mileageUnit` | `mileage_unit` |
+| `fuelType` | `fuel_type` |
+| `drivetrain` | `drive_type`, `driveType` |
+| `bodyType` | `body_type` |
+| `engineCc` | `engine_cc`, `displacement` |
+| `exteriorColor` | `exterior_color`, `color` |
+| `priceType` | `price_type`, `incoterm` |
+| `imageUrls` | `image_urls`, `images`, `photos` |
+| `listingUrl` | `listing_url`, `url` |
+| `locationCity` | `location_city`, `location` |
+| `isAvailable` | `is_available`, `available` |
+
+Numbers may arrive as numbers or as quoted strings. Unknown properties are ignored rather than
+rejected — a source adding a field should not break an importer that has not learned it yet,
+and the whole payload is preserved verbatim regardless.
+
+## `chassis_code` is not a chassis number
+
+Worth stating on its own, because getting it wrong is silently destructive.
+
+A field named `chassis_code` (also `model_code`) holds a manufacturer's **model** designation —
+`M700A`, `5BA-M700A`. Every Toyota Passo of a generation carries the same one, so two different
+cars share a value. It is stored as a specification and **never** used for identity; treating it
+as a chassis number would merge every car of a model into a single vehicle.
+
+`chassisNumber` / `chassis_number` is the per-car number, and only that is used for matching.
+
 ## Document shape
 
 | Field | Required | Meaning |
@@ -79,7 +116,7 @@ returns 409.
 | Field | Type | Notes |
 | --- | --- | --- |
 | `externalId` | string | The producer's own stable id. Re-importing the same id updates rather than duplicates. Falls back to `row-N` if omitted, which makes failures reportable but breaks update-matching |
-| `lastSeenAtUtc` | ISO 8601 UTC | When this listing was last confirmed to exist. **A record without it is rejected** — never back-filled with "now", which would assert a confirmation nobody made |
+| `lastSeenAtUtc` | ISO 8601 UTC | When this listing was last confirmed to exist. Falls back to the document's `capturedAtUtc` when absent — every record in a document was seen when it was made. **Never** back-filled with the import moment, which would assert a confirmation nobody made |
 
 ### Identity
 
@@ -98,7 +135,11 @@ deduplicated, and the import response counts it under `withoutStrongIdentifier`.
 
 | Field | Type | Accepted values |
 | --- | --- | --- |
-| `make`, `model`, `variant` | string | Free text. Searched as typed |
+| `make`, `model`, `variant` | string | Free text. Searched as typed. When `variant` is absent, a grade is read out of `title` if one is present — `"2022 TOYOTA PASSO 1.0XLPKG"` yields `1.0XLPKG` — and recorded as inferred rather than stated |
+| `title` | string | The source's headline. Used only to derive a missing variant |
+| `chassisCode` | string | Model code. A specification, never an identifier — see above |
+| `seats`, `doors` | number | |
+| `conditionNotes` | string | Free text about condition |
 | `year` | number | Model year |
 | `mileage` | number | Paired with `mileageUnit` |
 | `mileageUnit` | string | `km`, `mi`. **Absent leaves it Unknown** — not assumed to be km |
@@ -195,6 +236,35 @@ the sources screen's "last synced".
 | File is not valid JSON | 400, nothing imported, parser message names the position |
 | `sourceCode` contradicts the endpoint | 400, nothing imported |
 | Source code not registered | 404 |
-| One record is malformed or missing `lastSeenAtUtc` | That record fails; the run continues and reports it in `SyncJobItems`. One bad row never discards a good file |
+| One record is malformed | That record fails; the run continues and reports it in `SyncJobItems`. One bad row never discards a good file |
 | Record outside the coverage filter | Skipped, counted in `skippedOutOfScope` |
 | Caller lacks `vehicles.sync` | 403 |
+
+## Deleting a source
+
+```
+DELETE /api/v1/vehicle-sources/{code}?confirm={code}
+```
+
+Requires `vehicles.sync`, and the code has to be repeated in `confirm` — this is irreversible,
+so the request names what it destroys rather than being one mis-click.
+
+**A car another source still lists is kept.** Only vehicles left with no listing at all are
+deleted, along with their photos and any tenant prices set on them. Deleting one exporter never
+silently removes stock a different exporter is also selling. The response says how many of each:
+
+```json
+{
+  "code": "beforward",
+  "listingsDeleted": 5,
+  "vehiclesDeleted": 5,
+  "vehiclesKept": 0,
+  "imagesDeleted": 132,
+  "syncJobsDeleted": 1,
+  "tenantOverlaysDeleted": 0
+}
+```
+
+In the UI it is the **Delete** button on each source card, which states these consequences
+before doing anything.
+

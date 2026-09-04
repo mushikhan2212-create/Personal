@@ -6,6 +6,7 @@ using CarDealer.Application.VehicleSources;
 using CarDealer.Domain.Entities;
 using CarDealer.Domain.Enums;
 using CarDealer.Infrastructure.Persistence;
+using CarDealer.Infrastructure.Sources;
 using CarDealer.Infrastructure.Sync;
 using CarDealer.Integrations.FileImport;
 using Microsoft.AspNetCore.Mvc;
@@ -223,6 +224,58 @@ public sealed class VehicleSourcesController : ControllerBase
             source.BaseUrl,
             scope = source.TenantId is null ? "global" : "tenant",
         });
+    }
+
+    /// <summary>
+    /// Deletes a source and the catalog data only it was holding up.
+    /// </summary>
+    /// <remarks>
+    /// A car another source still offers is kept: deleting one exporter must not silently
+    /// remove vehicles a different exporter is also selling. Only vehicles left with no
+    /// listing at all go, taking their images and tenant overlays with them.
+    ///
+    /// The caller repeats the code in <c>confirm</c>. This is destructive and irreversible -
+    /// there is no soft delete and no undo - so the request has to name what it is destroying
+    /// rather than being one mis-click on a menu.
+    /// </remarks>
+    [HttpDelete("{code}")]
+    [HasPermission(Permissions.VehiclesSync)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Delete(
+        string code, [FromQuery] string? confirm, CancellationToken ct)
+    {
+        if (!string.Equals(confirm, code, StringComparison.Ordinal))
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "Deleting a source has to be confirmed.",
+                Detail = $"Repeat the code as the 'confirm' query parameter: "
+                    + $"DELETE /api/v1/vehicle-sources/{code}?confirm={code}. This removes the "
+                    + "source and every vehicle no other source lists, and cannot be undone.",
+                Status = StatusCodes.Status400BadRequest,
+            });
+        }
+
+        // Deleting global catalog rows needs a context with no tenant resolved, the same route
+        // sync and import take. Authorization already ran against the caller's own scope.
+        using var scope = _scopeFactory.CreateScope();
+        var removal = scope.ServiceProvider.GetRequiredService<VehicleSourceRemovalService>();
+
+        var result = await removal.RemoveAsync(code, ct).ConfigureAwait(false);
+
+        if (result is null)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = $"No vehicle source is registered with code '{code}'.",
+                Status = StatusCodes.Status404NotFound,
+            });
+        }
+
+        return Ok(result);
     }
 
     /// <summary>

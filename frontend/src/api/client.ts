@@ -192,6 +192,28 @@ export const createSource = (source: CreateSourceRequest): Promise<VehicleSource
     }),
   });
 
+export interface SourceRemoval {
+  code: string;
+  listingsDeleted: number;
+  vehiclesDeleted: number;
+  vehiclesKept: number;
+  imagesDeleted: number;
+  syncJobsDeleted: number;
+  tenantOverlaysDeleted: number;
+}
+
+/**
+ * Deletes a source and the catalog data only it was holding up.
+ *
+ * The code is repeated as `confirm` because the API insists on it: this is irreversible, so
+ * the request has to name what it destroys rather than being one mis-click.
+ */
+export const deleteSource = (code: string): Promise<SourceRemoval> =>
+  request<SourceRemoval>(
+    `/vehicle-sources/${encodeURIComponent(code)}?confirm=${encodeURIComponent(code)}`,
+    { method: 'DELETE' },
+  );
+
 export const getVehicle = (id: string): Promise<VehicleDetail> =>
   request<VehicleDetail>(`/vehicles/${encodeURIComponent(id)}`);
 

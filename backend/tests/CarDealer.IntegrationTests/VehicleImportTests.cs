@@ -167,20 +167,21 @@ public sealed class VehicleImportTests : IClassFixture<ApiFactory>
     }
 
     [Fact]
-    public async Task A_record_missing_lastSeenAtUtc_fails_alone_and_the_run_continues()
+    public async Task A_record_with_no_timestamp_takes_the_documents_capture_time()
     {
         var code = await RegisterSourceAsync();
         var marker = $"IMP{Guid.NewGuid():N}"[..10];
         var client = await _factory.AuthenticatedClientAsync("owner@nihon-motors.test");
 
+        var captured = new DateTime(2026, 8, 20, 6, 30, 0, DateTimeKind.Utc);
+
         var json = JsonSerializer.Serialize(new
         {
+            capturedAtUtc = captured,
             vehicles = new object[]
             {
-                Vehicle("d-1", $"{marker}Toyota", "Hiace"),
-
-                // No lastSeenAtUtc: rejected rather than back-filled with "now", which would
-                // assert a confirmation nobody made.
+                // No lastSeenAtUtc. Producers rarely stamp each row, and the document already
+                // answers the question: every record in it was seen when it was made.
                 new { externalId = "d-2", make = $"{marker}Toyota", model = "Coaster" },
             },
         });
@@ -188,9 +189,45 @@ public sealed class VehicleImportTests : IClassFixture<ApiFactory>
         var body = await ImportAsync(client, code, json);
 
         Assert.Equal(1, body.GetProperty("created").GetInt32());
-        Assert.Equal(1, body.GetProperty("failed").GetInt32());
+        Assert.Equal(0, body.GetProperty("failed").GetInt32());
 
-        // One bad row must not discard the good one.
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CarDealerDbContext>();
+        var listing = await db.VehicleListings.IgnoreQueryFilters()
+            .FirstAsync(l => l.ExternalListingId == "d-2");
+
+        // The capture time, not "now". Substituting the import moment would assert a
+        // confirmation nobody made - the false freshness that made the previous source useless.
+        Assert.Equal(captured, listing.LastSeenAtUtc);
+    }
+
+    [Fact]
+    public async Task A_malformed_record_fails_alone_and_the_run_continues()
+    {
+        var code = await RegisterSourceAsync();
+        var marker = $"IMP{Guid.NewGuid():N}"[..10];
+        var client = await _factory.AuthenticatedClientAsync("owner@nihon-motors.test");
+
+        var json = $$"""
+            {
+              "vehicles": [
+                {
+                  "externalId": "ok-1",
+                  "make": "{{marker}}Toyota",
+                  "model": "Hiace",
+                  "lastSeenAtUtc": "2026-09-01T00:00:00Z"
+                },
+                "this is not a vehicle object"
+              ]
+            }
+            """;
+
+        var body = await ImportAsync(client, code, json);
+
+        // One bad entry must not discard the good one, and must be reported rather than
+        // silently skipped.
+        Assert.Equal(1, body.GetProperty("created").GetInt32());
+        Assert.Equal(1, body.GetProperty("failed").GetInt32());
         Assert.Equal("PartiallySucceeded", body.GetProperty("status").GetString());
     }
 
