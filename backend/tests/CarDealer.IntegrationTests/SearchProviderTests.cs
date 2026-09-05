@@ -1,3 +1,4 @@
+using CarDealer.Application.Abstractions;
 using CarDealer.Application.Search;
 using CarDealer.Domain.Entities;
 using CarDealer.Domain.Enums;
@@ -95,7 +96,7 @@ public sealed class SearchProviderTests : IClassFixture<ApiFactory>
         var scope = factory.Services.CreateScope();
         scope.ServiceProvider.GetRequiredService<TenantContext>().SetTenant(tenantId);
         var db = scope.ServiceProvider.GetRequiredService<CarDealerDbContext>();
-        return (scope, new SqlServerSearchProvider(db), db);
+        return (scope, new SqlServerSearchProvider(db, scope.ServiceProvider.GetRequiredService<ICurrentUser>()), db);
     }
 
     private static async Task<VehicleSearchResult> SearchAsync(
@@ -304,7 +305,7 @@ public sealed class SearchProviderTests : IClassFixture<ApiFactory>
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<CarDealerDbContext>();
-        var search = new SqlServerSearchProvider(db);
+        var search = new SqlServerSearchProvider(db, scope.ServiceProvider.GetRequiredService<ICurrentUser>());
 
         var marker = (await db.Vehicles.IgnoreQueryFilters()
             .FirstAsync(v => v.Id == seeded.GlobalVehicleId)).Make!;

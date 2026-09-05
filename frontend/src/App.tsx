@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Layout, Typography, message } from 'antd';
 import { ImportPage } from './pages/ImportPage';
 import { LoginPage } from './pages/LoginPage';
+import { MySourcesPage } from './pages/MySourcesPage';
 import { SearchPage } from './pages/SearchPage';
 import { VehicleDetailPage } from './pages/VehicleDetailPage';
 import type { TenantSummary } from './api/types';
@@ -24,7 +25,8 @@ export interface Session {
 type View =
   | { name: 'search' }
   | { name: 'vehicle'; id: string }
-  | { name: 'import' };
+  | { name: 'import' }
+  | { name: 'my-sources' };
 
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -70,12 +72,22 @@ export function App() {
             onSignOut={signOut}
             onOpenVehicle={(id) => setView({ name: 'vehicle', id })}
             onOpenImport={() => setView({ name: 'import' })}
+            onOpenMySources={() => setView({ name: 'my-sources' })}
             catalogVersion={catalogVersion}
           />
         )}
 
         {session && view.name === 'vehicle' && (
           <VehicleDetailPage id={view.id} onBack={() => setView({ name: 'search' })} />
+        )}
+
+        {session && view.name === 'my-sources' && (
+          <MySourcesPage
+            onBack={() => setView({ name: 'search' })}
+            // A muted source changes what search returns, so the next visit re-runs the query
+            // rather than showing results gathered under the old choices.
+            onChanged={() => setCatalogVersion((v) => v + 1)}
+          />
         )}
 
         {session && view.name === 'import' && (

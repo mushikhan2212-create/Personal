@@ -516,3 +516,34 @@ public class SyncJobItemConfiguration : IEntityTypeConfiguration<SyncJobItem>
         builder.HasIndex(x => new { x.SyncJobId, x.Status });
     }
 }
+
+public class UserVehicleSourcePreferenceConfiguration
+    : IEntityTypeConfiguration<UserVehicleSourcePreference>
+{
+    public void Configure(EntityTypeBuilder<UserVehicleSourcePreference> builder)
+    {
+        builder.ToTable("UserVehicleSourcePreferences");
+        builder.HasKey(x => x.Id);
+
+        builder.Property(x => x.CreatedAtUtc).HasPrecision(3).IsRequired();
+        builder.Property(x => x.UpdatedAtUtc).HasPrecision(3).IsRequired();
+
+        // One row per person per source. Without this a repeated toggle would accumulate
+        // contradictory rows and the last writer would win by accident.
+        builder.HasIndex(x => new { x.UserId, x.VehicleSourceId }).IsUnique();
+
+        builder.HasOne(x => x.User)
+            .WithMany()
+            .HasForeignKey(x => x.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Cascade, so deleting a source takes its preferences with it. A preference against a
+        // source that no longer exists is not worth keeping, and leaving them would make the
+        // source deletion fail on a restricting key.
+        builder.HasOne(x => x.VehicleSource)
+            .WithMany()
+            .HasForeignKey(x => x.VehicleSourceId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+

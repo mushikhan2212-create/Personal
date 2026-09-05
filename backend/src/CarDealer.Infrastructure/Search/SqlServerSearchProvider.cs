@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using CarDealer.Application.Abstractions;
 using CarDealer.Application.Search;
 using CarDealer.Domain.Enums;
 using CarDealer.Infrastructure.Persistence;
@@ -22,8 +23,13 @@ namespace CarDealer.Infrastructure.Search;
 public sealed class SqlServerSearchProvider : ISearchProvider
 {
     private readonly CarDealerDbContext _db;
+    private readonly ICurrentUser _currentUser;
 
-    public SqlServerSearchProvider(CarDealerDbContext db) => _db = db;
+    public SqlServerSearchProvider(CarDealerDbContext db, ICurrentUser currentUser)
+    {
+        _db = db;
+        _currentUser = currentUser;
+    }
 
     private const string LikeEscape = "\\";
 
@@ -95,6 +101,24 @@ public sealed class SqlServerSearchProvider : ISearchProvider
         if (query.VehicleSourceId is { } sourceId)
         {
             listings = listings.Where(l => l.VehicleSourceId == sourceId);
+        }
+
+        // Sources this person has switched off for themselves.
+        //
+        // Applied to listings rather than to vehicles, which is what makes a car offered by
+        // two sources survive muting one of them: the muted offer disappears, the car stays,
+        // and its offer count drops by one. Muting a source never removes stock another
+        // enabled source is supplying.
+        //
+        // Absence of a row means enabled, so only the explicit false rows are gathered. A
+        // source nobody has touched - including one registered five minutes ago - is on.
+        if (_currentUser.UserId is { } userId)
+        {
+            var muted = _db.UserVehicleSourcePreferences
+                .Where(p => p.UserId == userId && !p.IsEnabled)
+                .Select(p => p.VehicleSourceId);
+
+            listings = listings.Where(l => !muted.Contains(l.VehicleSourceId));
         }
 
         if (!string.IsNullOrWhiteSpace(query.Text))

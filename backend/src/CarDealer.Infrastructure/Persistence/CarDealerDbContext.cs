@@ -55,6 +55,9 @@ public class CarDealerDbContext : DbContext
 
     public DbSet<TenantVehicle> TenantVehicles => Set<TenantVehicle>();
 
+    public DbSet<UserVehicleSourcePreference> UserVehicleSourcePreferences
+        => Set<UserVehicleSourcePreference>();
+
     public DbSet<VehicleMatchCandidate> VehicleMatchCandidates => Set<VehicleMatchCandidate>();
 
     public DbSet<VehicleMergeHistory> VehicleMergeHistories => Set<VehicleMergeHistory>();
@@ -92,7 +95,6 @@ public class CarDealerDbContext : DbContext
     ///   Tenant      - it is the tenant; access is controlled by membership at the service layer.
     ///   User        - a global identity by decision D2.
     ///   Permission  - global reference data, identical for every tenant.
-    ///   RolePermission - reached only through Role, which is filtered.
     ///   RefreshToken - looked up by a cryptographically random hash during refresh, before
     ///                  any tenant is resolved. Filtering it would break the refresh flow;
     ///                  the token hash is itself the capability.
@@ -150,6 +152,12 @@ public class CarDealerDbContext : DbContext
 
         modelBuilder.Entity<VehicleSourceConfiguration>()
             .HasQueryFilter(e => e.TenantId == _tenantContext.TenantIdOrZero);
+
+        // UserVehicleSourcePreference is deliberately absent from this list. It is keyed by
+        // user rather than tenant - a user is a global identity by decision D2 - and every
+        // query against it is already scoped to the authenticated user's own id. A tenant
+        // filter would have nothing to compare against.
+        
     }
 
     /// <summary>

@@ -16,6 +16,7 @@ interface Props {
   onSignOut: () => void;
   onOpenVehicle: (id: string) => void;
   onOpenImport: () => void;
+  onOpenMySources: () => void;
   /** Bumped by an import, so returning here re-runs the query instead of showing stale counts. */
   catalogVersion: number;
 }
@@ -36,7 +37,7 @@ interface Filters {
 const PAGE_SIZE = 24;
 
 export function SearchPage({
-  session, onSignOut, onOpenVehicle, onOpenImport, catalogVersion,
+  session, onSignOut, onOpenVehicle, onOpenImport, onOpenMySources, catalogVersion,
 }: Props) {
   const { message } = AntApp.useApp();
 
@@ -157,6 +158,8 @@ export function SearchPage({
           <Typography.Text type="secondary">{session.email}</Typography.Text>
         </Space>
         <Space>
+          {/* Available to everyone: it only changes what this person sees. */}
+          <Button onClick={onOpenMySources}>My sources</Button>
           {canSync && <Button onClick={onOpenImport}>Import vehicles</Button>}
           <Button onClick={onSignOut}>Sign out</Button>
         </Space>

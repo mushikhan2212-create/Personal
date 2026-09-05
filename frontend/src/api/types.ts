@@ -168,3 +168,13 @@ export interface ImportResult extends SyncResult {
   storageReference: string | null;
   skippedOutOfScope: number;
 }
+
+export interface MySource {
+  code: string;
+  name: string;
+  providerType: string;
+  isShared: boolean;
+  vehicleCount: number;
+  /** Whether this source feeds *your* searches. Nobody else is affected by it. */
+  isEnabled: boolean;
+}

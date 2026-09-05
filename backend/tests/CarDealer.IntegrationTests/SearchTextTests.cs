@@ -1,3 +1,4 @@
+using CarDealer.Application.Abstractions;
 using CarDealer.Application.Search;
 using CarDealer.Domain.Entities;
 using CarDealer.Domain.Enums;
@@ -87,7 +88,7 @@ public sealed class SearchTextTests : IClassFixture<ApiFactory>
         scope.ServiceProvider.GetRequiredService<TenantContext>().SetTenant(tenantId);
         var db = scope.ServiceProvider.GetRequiredService<CarDealerDbContext>();
 
-        var result = await new SqlServerSearchProvider(db)
+        var result = await new SqlServerSearchProvider(db, scope.ServiceProvider.GetRequiredService<ICurrentUser>())
             .SearchAsync(new VehicleSearchQuery { Text = text, PageSize = 100 });
 
         return result.TotalCount;
@@ -221,7 +222,7 @@ public sealed class SearchStatusTests : IClassFixture<ApiFactory>
         scope.ServiceProvider.GetRequiredService<TenantContext>().SetTenant(tenantId);
         var db = scope.ServiceProvider.GetRequiredService<CarDealerDbContext>();
 
-        var result = await new SqlServerSearchProvider(db)
+        var result = await new SqlServerSearchProvider(db, scope.ServiceProvider.GetRequiredService<ICurrentUser>())
             .SearchAsync(new VehicleSearchQuery { Text = marker, PageSize = 100 });
 
         return [.. result.Hits.Select(h => h.Model!).OrderBy(m => m)];

@@ -1,5 +1,5 @@
 import type {
-  ImportResult, LoginResponse, SyncResult, VehicleDetail, VehicleSearchResponse,
+  ImportResult, LoginResponse, MySource, SyncResult, VehicleDetail, VehicleSearchResponse,
   VehicleSearchSort, VehicleSourceSummary,
 } from './types';
 
@@ -213,6 +213,14 @@ export const deleteSource = (code: string): Promise<SourceRemoval> =>
     `/vehicle-sources/${encodeURIComponent(code)}?confirm=${encodeURIComponent(code)}`,
     { method: 'DELETE' },
   );
+
+export const listMySources = (): Promise<MySource[]> => request<MySource[]>('/me/sources');
+
+export const setMySource = (code: string, isEnabled: boolean): Promise<unknown> =>
+  request(`/me/sources/${encodeURIComponent(code)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ isEnabled }),
+  });
 
 export const getVehicle = (id: string): Promise<VehicleDetail> =>
   request<VehicleDetail>(`/vehicles/${encodeURIComponent(id)}`);
