@@ -45,11 +45,17 @@ public static class Permissions
     public const string VehiclesRead = "vehicles.read";
 
     /// <summary>
-    /// Trigger a synchronization run against a vehicle source.
+    /// Administer vehicle sources: register, sync, import into and delete them.
     /// </summary>
     /// <remarks>
-    /// Separate from reading, and granted narrowly, because a sync spends provider quota and
-    /// writes to the shared global catalog. It is not a browsing action.
+    /// Held by Admin and Tenant Owner only. A shared source writes the global catalog that
+    /// every tenant reads (decision D1), so registering one or importing a file into it
+    /// publishes cars to people the importer has never met - that is an administrative act,
+    /// not a browsing one, and it also spends provider quota.
+    ///
+    /// Reading that catalog is <see cref="VehiclesRead"/>, which every role holds, and choosing
+    /// which of those sources feed your own searches needs nothing more than that: see
+    /// MySourcesController.
     /// </remarks>
     public const string VehiclesSync = "vehicles.sync";
 
@@ -63,12 +69,19 @@ public static class Permissions
         [RolesManage] = "Create, modify and delete tenant roles",
         [AuditRead] = "Read the audit log",
         [VehiclesRead] = "Search and view the vehicle catalog",
-        [VehiclesSync] = "Trigger a synchronization run against a vehicle source",
+        [VehiclesSync] = "Register, sync, import into and delete vehicle sources",
     };
 
     /// <summary>
-    /// Default permission grants per system role, applied by the seeder.
+    /// Permission grants per system role. The seeder applies this exactly: codes missing from a
+    /// system role are added, and codes it holds that are not listed here are revoked.
     /// </summary>
+    /// <remarks>
+    /// Authoritative rather than a starting point, because a grant that can only ever be added
+    /// makes narrowing a role impossible - editing this table would leave the old, wider grant
+    /// sitting in every database that had already been seeded. Tenant-defined roles are not
+    /// derived from this table and the seeder never touches them.
+    /// </remarks>
     public static readonly IReadOnlyDictionary<string, string[]> SystemRoleGrants =
         new Dictionary<string, string[]>
         {
@@ -78,7 +91,9 @@ public static class Permissions
                 TenantsRead, UsersRead, UsersManage, RolesRead, RolesManage, AuditRead,
                 VehiclesRead, VehiclesSync,
             ],
-            [SystemRoles.SalesManager] = [TenantsRead, UsersRead, RolesRead, VehiclesRead, VehiclesSync],
+            // Sales Manager reads the catalog like everyone else but does not administer
+            // sources: importing publishes cars into the shared catalog, which is Admin's call.
+            [SystemRoles.SalesManager] = [TenantsRead, UsersRead, RolesRead, VehiclesRead],
             [SystemRoles.Salesperson] = [TenantsRead, UsersRead, VehiclesRead],
 
             // ReadOnly can search. Withholding it would make the role useless in a product

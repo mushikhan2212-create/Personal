@@ -77,6 +77,7 @@ outside Production.
 | --- | --- | --- |
 | `owner@nihon-motors.test` | nihon-motors | TenantOwner |
 | `sales@nihon-motors.test` | nihon-motors | Salesperson |
+| `manager@nihon-motors.test` | nihon-motors | SalesManager |
 | `readonly@nihon-motors.test` | nihon-motors | ReadOnly |
 | `owner@karachi-auto.test` | karachi-auto | TenantOwner |
 | `multi@example.test` | **both** | Admin in nihon-motors, ReadOnly in karachi-auto |
@@ -85,6 +86,25 @@ outside Production.
 The last two exist to make multi-tenant identity testable at all: `multi@example.test` proves
 permissions resolve per tenant rather than globally, and `suspended@example.test` proves a
 suspension in one tenant does not lock the user out of another.
+
+### Who can do what
+
+| | Search the catalogue | My Sources | Register, import, sync, delete sources |
+| --- | --- | --- | --- |
+| TenantOwner, Admin | yes | yes | yes |
+| SalesManager, Salesperson, ReadOnly | yes | yes | **no** |
+
+Registering a source or importing a file publishes cars into the shared catalogue that every
+tenant reads, so it needs `vehicles.sync`, held by Admin and Tenant Owner only. Everyone else
+can search, open a vehicle, and choose which of those sources feed their own searches — that
+needs nothing beyond `vehicles.read`.
+
+`manager@nihon-motors.test` is the account to check that with: signed in as Sales Manager the
+Import and Delete buttons are absent, and the endpoints behind them answer 403.
+
+Grants are reconciled on startup from `Permissions.SystemRoleGrants`, so narrowing a system
+role there takes effect on an existing database the next time the API boots. Roles a tenant
+defines itself are never touched by that.
 
 In Swagger:
 

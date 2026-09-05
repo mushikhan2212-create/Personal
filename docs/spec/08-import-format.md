@@ -25,7 +25,9 @@ POST /api/v1/vehicle-sources/{code}/import          multipart/form-data, field n
 POST /api/v1/vehicle-sources/{code}/import?dryRun=true
 ```
 
-Requires the `vehicles.sync` permission. Maximum 64 MB.
+Requires the `vehicles.sync` permission, held by **Admin and Tenant Owner only**. Importing
+publishes cars into the shared catalogue every tenant reads, so it is an administrative act;
+searching what was imported needs only `vehicles.read`, which every role holds. Maximum 64 MB.
 
 **Run `dryRun=true` first on an unfamiliar file.** It parses, filters and counts exactly as a
 real import would — how many records are readable, how many fall inside the source's coverage,

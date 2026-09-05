@@ -321,10 +321,58 @@ public sealed class DatabaseSeeder
             }
         }
 
-        if (added > 0)
+        // Revoke what the table no longer grants. Without this the seeder could only ever widen
+        // a role: narrowing SystemRoleGrants would change the code while every already-seeded
+        // database kept the old, wider grant, and the running system would stay permissive while
+        // the source said otherwise.
+        //
+        // Scoped to system roles, and that scope is the whole safety property. Tenant-defined
+        // roles are built from an arbitrary permission set chosen through RolesController and
+        // were never derived from this table, so reconciling them against it would silently
+        // delete a tenant's own configuration. RolePermission also carries a query filter
+        // mirroring Role's, which in this tenant-less scope hides tenant grants anyway - but
+        // the explicit id set is the guard, not a happy accident of where the seeder runs.
+        var systemRoleIds = roles.Select(r => r.Id).ToHashSet();
+
+        var permittedByRole = Permissions.SystemRoleGrants
+            .Where(g => roles.Any(r => r.Name == g.Key))
+            .ToDictionary(
+                g => roles.First(r => r.Name == g.Key).Id,
+                g => g.Value
+                    .Where(permissions.ContainsKey)
+                    .Select(code => permissions[code])
+                    .ToHashSet());
+
+        var stale = await _db.RolePermissions
+            .Where(rp => systemRoleIds.Contains(rp.RoleId))
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        var revoked = 0;
+
+        foreach (var grant in stale)
+        {
+            // A system role absent from the table is left alone rather than stripped: that is a
+            // role this version has nothing to say about, not one whose grants are empty.
+            if (!permittedByRole.TryGetValue(grant.RoleId, out var permitted))
+            {
+                continue;
+            }
+
+            if (!permitted.Contains(grant.PermissionId))
+            {
+                _db.RolePermissions.Remove(grant);
+                revoked++;
+            }
+        }
+
+        if (added > 0 || revoked > 0)
         {
             await _db.SaveChangesAsync(ct).ConfigureAwait(false);
-            _logger.LogInformation("Seeded {GrantCount} role-permission grants.", added);
+            _logger.LogInformation(
+                "Reconciled system role grants: {GrantCount} added, {RevokedCount} revoked.",
+                added,
+                revoked);
         }
     }
 
@@ -353,6 +401,13 @@ public sealed class DatabaseSeeder
 
         await EnsureUserAsync("sales@nihon-motors.test", "Kenji", "Sato",
             [(nihon, SystemRoles.Salesperson, MembershipStatus.Active)], roles, ct).ConfigureAwait(false);
+
+        // Sales Manager exists here so the line between reading the catalog and administering
+        // it can actually be exercised. It is the role closest to the boundary - senior, but
+        // still without vehicles.sync - and until there was an account holding it, nothing
+        // could sign in as the role the rule is about.
+        await EnsureUserAsync("manager@nihon-motors.test", "Yuki", "Nakamura",
+            [(nihon, SystemRoles.SalesManager, MembershipStatus.Active)], roles, ct).ConfigureAwait(false);
 
         await EnsureUserAsync("readonly@nihon-motors.test", "Mei", "Kobayashi",
             [(nihon, SystemRoles.ReadOnly, MembershipStatus.Active)], roles, ct).ConfigureAwait(false);
