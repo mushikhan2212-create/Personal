@@ -34,8 +34,16 @@ public sealed class SearchTextTests : IClassFixture<ApiFactory>
 
         var tenantId = await db.Tenants.OrderBy(t => t.Id).Select(t => t.Id).FirstAsync();
 
-        // Unique per run so a shared database cannot let one test see another's rows.
-        var marker = $"TX{Guid.NewGuid():N}"[..10];
+        // Unique per run so a shared database cannot let one test see another's rows, and
+        // letters only, which is not cosmetic. A hex marker contains "86" about once in forty
+        // runs, and the make it prefixes is shared by all three cars - so the term meant to
+        // single out the model "86" matched every row instead, and this class failed
+        // intermittently for reasons that looked like flakiness in search. Restricting the
+        // alphabet removes the collision with the numeric models below rather than making it
+        // rarer.
+        var marker = "TX" + new string([.. Guid.NewGuid().ToByteArray()
+            .Take(8)
+            .Select(b => (char)('a' + (b % 16)))]);
 
         var source = new VehicleSource
         {
