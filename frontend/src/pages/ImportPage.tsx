@@ -8,7 +8,6 @@ import { createSource, importFile, listSources } from '../api/client';
 import type { ImportResult, VehicleSourceSummary } from '../api/types';
 
 interface Props {
-  onBack: () => void;
   onImported: () => void;
 }
 
@@ -19,7 +18,7 @@ interface Props {
  * where that data came from is the operator's decision. This screen is the whole of that
  * story: pick the source the stock belongs to, check the file, then commit it.
  */
-export function ImportPage({ onBack, onImported }: Props) {
+export function ImportPage({ onImported }: Props) {
   const [sources, setSources] = useState<VehicleSourceSummary[]>([]);
   const [code, setCode] = useState<string | undefined>();
   const [file, setFile] = useState<UploadFile | null>(null);
@@ -86,10 +85,7 @@ export function ImportPage({ onBack, onImported }: Props) {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%', maxWidth: 900 }}>
-      <Flex justify="space-between" align="center">
-        <Typography.Title level={3} style={{ margin: 0 }}>Import vehicles</Typography.Title>
-        <Button onClick={onBack}>Back to search</Button>
-      </Flex>
+      <Typography.Title level={4} style={{ margin: 0 }}>Import vehicles</Typography.Title>
 
       <Card size="small">
         <Space direction="vertical" size={12} style={{ width: '100%' }}>

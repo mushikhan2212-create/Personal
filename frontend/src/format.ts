@@ -37,3 +37,36 @@ export function ageInDays(value: string | null): number | null {
 
 /** Past this, a listing is old enough that its availability should not be trusted. */
 export const STALE_AFTER_DAYS = 14;
+
+/**
+ * A price with its currency, or an em dash when there is none.
+ *
+ * Shared rather than local to one component because a price rendered two ways on two screens
+ * is a price a user has to reconcile. Falls back to the plain number when the code is not one
+ * Intl recognises: an unfamiliar currency should show the amount, not crash the grid.
+ */
+export function formatMoney(amount: number | null, currency: string | null): string {
+  if (amount === null) return '—';
+
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: currency ?? 'USD',
+      maximumFractionDigits: 0,
+    }).format(amount);
+  } catch {
+    return `${amount.toLocaleString()} ${currency ?? ''}`.trim();
+  }
+}
+
+/** How this listing's age should read, and whether it is old enough to distrust. */
+export function describeAge(lastSeenAtUtc: string): { label: string; isStale: boolean } {
+  const age = ageInDays(lastSeenAtUtc);
+
+  if (age === null) return { label: 'Age unknown', isStale: false };
+
+  return {
+    label: age <= 0 ? 'Today' : `${age}d ago`,
+    isStale: age > STALE_AFTER_DAYS,
+  };
+}

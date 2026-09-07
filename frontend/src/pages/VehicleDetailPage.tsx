@@ -42,6 +42,16 @@ const money = (amount: number | null, currency: string | null): string => {
   }
 };
 
+
+/** Shown in place of a photo that will not load. Inline so it needs no network of its own. */
+const MISSING_PHOTO = 'data:image/svg+xml;utf8,'
+  + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120">'
+    + '<rect width="160" height="120" fill="%23e2e8f0"/>'
+    + '<text x="80" y="64" font-family="sans-serif" font-size="11" fill="%2394a3b8" '
+    + 'text-anchor="middle">No photo</text></svg>',
+  );
+
 export function VehicleDetailPage({ id, onBack }: Props) {
   const [vehicle, setVehicle] = useState<VehicleDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -151,6 +161,9 @@ export function VehicleDetailPage({ id, onBack }: Props) {
                         src={url}
                         width={160}
                         height={120}
+                        // A source's image can 404 or be blocked, and the default broken-image
+                        // box reads as the app failing rather than the photo missing.
+                        fallback={MISSING_PHOTO}
                         style={{ objectFit: 'cover', borderRadius: 4 }}
                       />
                     ))}

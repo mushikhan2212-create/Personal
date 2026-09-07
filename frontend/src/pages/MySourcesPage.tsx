@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Alert, Card, Flex, List, Modal, Space, Spin, Switch, Tag, Typography, Button, App as AntApp,
+  Alert, Card, List, Modal, Space, Spin, Switch, Tag, Typography, Button, App as AntApp,
 } from 'antd';
 import { deleteSource, listMySources, setMySource, syncSource } from '../api/client';
 import type { MySource } from '../api/types';
 import { formatUtc } from '../format';
 
 interface Props {
-  onBack: () => void;
   onChanged: () => void;
   /**
    * Whether this user holds vehicles.sync. It gates the destructive half of the screen only -
@@ -26,7 +25,7 @@ interface Props {
  * sync and delete write the shared catalogue. So the switches need no permission and are shown
  * to everyone, and the buttons need vehicles.sync and appear only for Admin and Tenant Owner.
  */
-export function MySourcesPage({ onBack, onChanged, canManage }: Props) {
+export function MySourcesPage({ onChanged, canManage }: Props) {
   const { message } = AntApp.useApp();
 
   const [sources, setSources] = useState<MySource[]>([]);
@@ -132,10 +131,7 @@ export function MySourcesPage({ onBack, onChanged, canManage }: Props) {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%', maxWidth: 820 }}>
-      <Flex justify="space-between" align="center">
-        <Typography.Title level={3} style={{ margin: 0 }}>My sources</Typography.Title>
-        <Button onClick={onBack}>Back to search</Button>
-      </Flex>
+      <Typography.Title level={4} style={{ margin: 0 }}>My sources</Typography.Title>
 
       <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
         Choose which sources appear in your searches. This affects only you — your colleagues
