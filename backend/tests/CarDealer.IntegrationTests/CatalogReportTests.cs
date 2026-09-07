@@ -106,7 +106,12 @@ public sealed class CatalogReportTests : IClassFixture<ApiFactory>
         // Two of four carry a VIN, one a chassis number, one nothing at all.
         Assert.Equal(50, mine.Identity.VinPercent);
         Assert.Equal(25, mine.Identity.ChassisPercent);
-        Assert.Equal(25, mine.Identity.NoIdentifierPercent);
+
+        // The one with neither. A lot number would not rescue it: that is the exporter's own
+        // stock code, so it cannot recognise the same car in another source's data - and
+        // counting it here is what made the report claim a fully identified catalogue while
+        // its own deduplication section said nothing was identifiable.
+        Assert.Equal(25, mine.Identity.NoCrossSourceIdentifierPercent);
 
         // Counted directly rather than inferred by subtracting the three coverage figures,
         // which would double-count a listing carrying two identifiers.
@@ -137,6 +142,30 @@ public sealed class CatalogReportTests : IClassFixture<ApiFactory>
         Assert.All(report.Searches, t => Assert.True(t.ElapsedMs >= 0));
 
         Assert.True(report.Deduplication.VehiclesTotal > 0);
+    }
+
+    [Fact]
+    public async Task The_per_source_and_catalog_identity_figures_agree()
+    {
+        // Reported from a real catalogue of 104 imported cars: every source read
+        // "noIdentifierPercent: 0" while the deduplication block read
+        // "noStrongIdentifier: 104". Both were right by their own definition, which is worse
+        // than one of them being wrong - a reader cannot tell which to believe.
+        var code = await SeedAsync();
+
+        using var scope = _factory.Services.CreateScope();
+        var reports = scope.ServiceProvider.GetRequiredService<CatalogReportService>();
+
+        var report = await reports.BuildAsync();
+        var mine = report.Sources.Single(s => s.Code == code);
+
+        // One of this source's four listings carries neither a VIN nor a chassis number, and
+        // the catalogue-wide count must include it rather than contradicting it.
+        var withoutHere = (int)Math.Round(mine.Identity.NoCrossSourceIdentifierPercent
+            / 100.0 * mine.Listings);
+
+        Assert.Equal(1, withoutHere);
+        Assert.True(report.Deduplication.NoStrongIdentifier >= withoutHere);
     }
 
     [Fact]

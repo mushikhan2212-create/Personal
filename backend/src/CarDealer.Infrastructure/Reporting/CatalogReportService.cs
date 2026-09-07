@@ -88,9 +88,12 @@ public sealed class CatalogReportService
                 WithVin = g.Sum(l => l.Vehicle.Vin != null ? 1 : 0),
                 WithChassis = g.Sum(l => l.Vehicle.ChassisNumber != null ? 1 : 0),
                 WithLot = g.Sum(l => l.Vehicle.LotNumber != null ? 1 : 0),
-                WithNothing = g.Sum(l => l.Vehicle.Vin == null
-                    && l.Vehicle.ChassisNumber == null
-                    && l.Vehicle.LotNumber == null ? 1 : 0),
+                // Deliberately ignores the lot number. It is the exporter's own stock code,
+                // hashed with the source id, so it identifies this car inside this source and
+                // nowhere else - counting it here would report a catalogue as fully identified
+                // while no car in it can be recognised in another source's data.
+                WithoutCrossSourceId = g.Sum(l => l.Vehicle.Vin == null
+                    && l.Vehicle.ChassisNumber == null ? 1 : 0),
 
                 // Specification.
                 WithMake = g.Sum(l => l.Vehicle.Make != null ? 1 : 0),
@@ -158,7 +161,7 @@ public sealed class CatalogReportService
                         Percent(r.WithVin, total),
                         Percent(r.WithChassis, total),
                         Percent(r.WithLot, total),
-                        Percent(r.WithNothing, total)),
+                        Percent(r.WithoutCrossSourceId, total)),
                     Completeness: new Dictionary<string, double>
                     {
                         ["make"] = Percent(r.WithMake, total),
@@ -301,12 +304,20 @@ public sealed record SourceReport(
     IReadOnlyDictionary<string, double> Completeness,
     FreshnessReport Freshness);
 
-/// <summary>What share of a source's listings carry each kind of identifier.</summary>
+/// <summary>
+/// What share of a source's listings carry each kind of identifier, and - the number that
+/// decides whether aggregating several exporters can work at all - what share carry none that
+/// would recognise the same car in another source.
+/// </summary>
+/// <param name="SourceLotOnlyPercent">
+/// Carries the exporter's own stock code and nothing stronger. Useful for re-importing this
+/// source without creating duplicates of itself, useless for matching against any other.
+/// </param>
 public sealed record IdentityCoverage(
     double VinPercent,
     double ChassisPercent,
-    double LotPercent,
-    double NoIdentifierPercent);
+    double SourceLotOnlyPercent,
+    double NoCrossSourceIdentifierPercent);
 
 public sealed record FreshnessReport(
     double StalePercent,

@@ -99,7 +99,9 @@ curl -s http://localhost:5246/api/v1/catalog-report \
 ```
 
 It is computed rather than written down because a number typed into a document is stale the
-moment the next import runs. `docs/spec/09-poc-evaluation.md` is written from its output.
+moment the next import runs. [`docs/spec/09-poc-evaluation.md`](../docs/spec/09-poc-evaluation.md)
+is written from its output — including the POC's central finding, that twelve cars in a real
+104-vehicle catalogue are listed by both exporters and the platform matches none of them.
 
 ### Who can do what
 

@@ -214,3 +214,38 @@ job continuations) is commercially licensed.
 Minor, and the "or equivalent" hedge covers it — but the choice should be conscious rather than
 discovered when a needed feature turns out to be behind the paid tier. The abstraction §4 requires
 means the decision stays reversible.
+
+## O15 — Near-duplicate detection without a strong identifier
+
+Measured, not hypothesised. [`09-poc-evaluation.md`](09-poc-evaluation.md) reports 104 real
+listings from BE FORWARD and SBT Japan, of which **twelve are the same twelve cars listed by
+both**: identical year, colour and odometer to the kilometre, with prices differing by a
+consistent +5% or −7% — two exporters quoting the same stock at different margins.
+
+The platform matched **none** of them. Neither exporter supplies a VIN or a chassis number, and
+decision [D3](02-decisions.md) auto-merges only on a strong identifier. The architecture is
+behaving as specified; the specification's cost is now known — around 12% of an aggregated
+Japanese-export catalogue is duplicated and invisible, which is precisely the value a buyer came
+for.
+
+**Do not resolve this by loosening D3.** The same POC shows why: BE FORWARD sends the literal
+string `"-"` as `chassis_code` for 27 of its 50 cars, and SBT sends `"COROLLA ALTIS"` for 23 of
+49. Any rule permissive enough to match the twelve genuine duplicates on weak signals is
+permissive enough to merge those into one vehicle each.
+
+**Decision needed:** whether to score near-duplicates and surface them for human confirmation.
+The `VehicleMatchCandidate` table already exists, is unused, and carries `MatchCandidateStatus`
+(`Pending`/`Merged`/`Rejected`) — the schema anticipated exactly this and stopped short of
+deciding it.
+
+The shape to evaluate, when it is evaluated:
+
+- score on year + odometer + colour + engine displacement, with the odometer doing most of the
+  work, since two different cars rarely share one to the kilometre
+- write candidates, never merges; a pair above the threshold becomes a `Pending` row
+- a person confirms or rejects, and `CanonicalHashSource` already records which rule matched so
+  a VIN match can be trusted more than a scored one during review
+- until confirmed, both cars stay in the catalogue and search shows both
+
+**Owner and date required.** Until this is decided, an aggregated catalogue shows duplicates,
+and that should be stated to users rather than discovered by them.
