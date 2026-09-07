@@ -96,6 +96,33 @@ public sealed class MySourcesTests : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task The_listing_carries_what_the_sources_screen_renders()
+    {
+        // This payload is the only thing behind that screen since the search page stopped
+        // showing a sources panel: the switches, the freshness line, and the sync and delete
+        // buttons an administrator sees. A field quietly dropped here goes unnoticed until
+        // someone cannot tell a source that has never synced from one whose syncs all failed.
+        var code = await SourceAsync();
+        var client = await _factory.AuthenticatedClientAsync("owner@nihon-motors.test");
+
+        var listed = await client.GetFromJsonAsync<JsonElement>("/api/v1/me/sources");
+        var mine = listed.EnumerateArray().Single(s => s.GetProperty("code").GetString() == code);
+
+        foreach (var field in new[]
+        {
+            "code", "name", "providerType", "isShared", "vehicleCount",
+            "lastSyncAtUtc", "lastAttemptStatus", "isEnabled",
+        })
+        {
+            Assert.True(mine.TryGetProperty(field, out _), $"'{field}' is missing from /me/sources.");
+        }
+
+        // Never synced, so both are null rather than absent - the screen distinguishes the two.
+        Assert.Equal(JsonValueKind.Null, mine.GetProperty("lastSyncAtUtc").ValueKind);
+        Assert.Equal(JsonValueKind.Null, mine.GetProperty("lastAttemptStatus").ValueKind);
+    }
+
+    [Fact]
     public async Task Muting_a_source_hides_its_cars_from_that_user_only()
     {
         var code = await SourceAsync();

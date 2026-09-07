@@ -84,6 +84,7 @@ export function App() {
         {session && view.name === 'my-sources' && (
           <MySourcesPage
             onBack={() => setView({ name: 'search' })}
+            canManage={session.permissions.includes('vehicles.sync')}
             // A muted source changes what search returns, so the next visit re-runs the query
             // rather than showing results gathered under the old choices.
             onChanged={() => setCatalogVersion((v) => v + 1)}

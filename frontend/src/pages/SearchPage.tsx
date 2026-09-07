@@ -1,14 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Alert, App as AntApp, Button, Card, Col, Empty, Flex, Form, Input, InputNumber, Modal,
+  Alert, Button, Card, Col, Empty, Flex, Form, Input, InputNumber,
   Pagination, Row, Select, Space, Spin, Statistic, Tag, Typography,
 } from 'antd';
-import { deleteSource, listSources, searchVehicles, syncSource } from '../api/client';
-import type {
-  VehicleSearchResponse, VehicleSearchSort, VehicleSourceSummary,
-} from '../api/types';
+import { searchVehicles } from '../api/client';
+import type { VehicleSearchResponse, VehicleSearchSort } from '../api/types';
 import { VehicleCard } from '../components/VehicleCard';
-import { formatUtc } from '../format';
 import type { Session } from '../App';
 
 interface Props {
@@ -39,14 +36,10 @@ const PAGE_SIZE = 24;
 export function SearchPage({
   session, onSignOut, onOpenVehicle, onOpenImport, onOpenMySources, catalogVersion,
 }: Props) {
-  const { message } = AntApp.useApp();
-
   const [filters, setFilters] = useState<Filters>({ q: '', sort: 'RecentlySeen' });
   const [page, setPage] = useState(1);
   const [result, setResult] = useState<VehicleSearchResponse | null>(null);
-  const [sources, setSources] = useState<VehicleSourceSummary[]>([]);
   const [loading, setLoading] = useState(false);
-  const [syncing, setSyncing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const canSync = session.permissions.includes('vehicles.sync');
@@ -64,19 +57,10 @@ export function SearchPage({
     }
   }, []);
 
-  const refreshSources = useCallback(async (): Promise<void> => {
-    try {
-      setSources(await listSources());
-    } catch {
-      // A source list that will not load must not block searching, which is the main job.
-    }
-  }, []);
-
   useEffect(() => {
     void runSearch(1, filters);
-    void refreshSources();
-    // On mount, and again after an import. Not on every keystroke - that would spend a
-    // request per character typed.
+    // On mount, and again after an import or a change on the My sources screen. Not on every
+    // keystroke - that would spend a request per character typed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalogVersion]);
 
@@ -85,69 +69,12 @@ export function SearchPage({
     void runSearch(1, filters);
   };
 
-  const confirmDelete = (source: VehicleSourceSummary): void => {
-    Modal.confirm({
-      title: `Delete ${source.name}?`,
-      okText: 'Delete permanently',
-      okButtonProps: { danger: true },
-      width: 520,
-      content: (
-        <Space direction="vertical" size={8}>
-          <Typography.Text>
-            This removes the source, its {source.vehicleCount.toLocaleString()} listing(s) and
-            its sync history.
-          </Typography.Text>
-
-          {/* Said plainly, because the alternative is someone discovering it afterwards. */}
-          <Typography.Text>
-            A car another source also lists is kept. Only cars nothing else offers are deleted,
-            along with their photos and any prices you have set on them.
-          </Typography.Text>
-
-          <Typography.Text type="danger">This cannot be undone.</Typography.Text>
-        </Space>
-      ),
-      onOk: async () => {
-        const outcome = await deleteSource(source.code);
-
-        message.success(
-          `${source.code} deleted: ${outcome.listingsDeleted} listing(s) and `
-          + `${outcome.vehiclesDeleted} vehicle(s) removed, `
-          + `${outcome.vehiclesKept} kept because another source still lists them.`,
-          10,
-        );
-
-        await refreshSources();
-        void runSearch(1, filters);
-      },
-    });
-  };
-
-  const runSync = async (code: string, fetchDetail: boolean): Promise<void> => {
-    setSyncing(code);
-
-    try {
-      const result = await syncSource(code, 2, fetchDetail);
-
-      message.success(
-        `${code}: ${result.created} created, ${result.updated} updated, `
-        + `${result.autoMerged} merged, ${result.failed} failed — `
-        + `${result.requestCount} request(s) in ${result.elapsedMs}ms. `
-        + `${result.withoutStrongIdentifier} record(s) had no strong identifier.`,
-        10,
-      );
-
-      await refreshSources();
-      void runSearch(1, filters);
-    } catch (e) {
-      message.error(e instanceof Error ? e.message : 'Sync failed.', 8);
-    } finally {
-      setSyncing(null);
-    }
-  };
-
   const set = <K extends keyof Filters>(key: K, value: Filters[K]): void =>
     setFilters((f) => ({ ...f, [key]: value }));
+
+  // Sort always carries a value, so it is not a filter the user applied.
+  const hasFilters = Object.entries(filters)
+    .some(([key, value]) => key !== 'sort' && value !== undefined && value !== '');
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -164,60 +91,6 @@ export function SearchPage({
           <Button onClick={onSignOut}>Sign out</Button>
         </Space>
       </Flex>
-
-      <Card size="small" title="Sources">
-        <Flex wrap gap={12}>
-          {sources.length === 0 && <Typography.Text type="secondary">No sources registered.</Typography.Text>}
-
-          {sources.map((s) => (
-            <Card key={s.code} size="small" style={{ minWidth: 260 }}>
-              <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                <Space>
-                  <Typography.Text strong>{s.name}</Typography.Text>
-                  <Tag>{s.code}</Tag>
-                </Space>
-
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {s.vehicleCount.toLocaleString()} listing(s)
-                  {s.lastSyncAtUtc && ` · last sync ${formatUtc(s.lastSyncAtUtc)}`}
-                </Typography.Text>
-
-                {/* A failed run is called a failure. Without this the card shows only the
-                    last successful sync, and a source whose every attempt has failed is
-                    indistinguishable from one nobody has tried yet. */}
-                {s.lastAttemptStatus === 'Failed' && (
-                  <Typography.Text type="danger" style={{ fontSize: 12 }}>
-                    Last attempt failed ({formatUtc(s.lastAttemptAtUtc)})
-                  </Typography.Text>
-                )}
-
-                {canSync && (
-                  <Space size={4}>
-                    <Button size="small" loading={syncing === s.code} onClick={() => void runSync(s.code, false)}>
-                      Sync
-                    </Button>
-
-                    {/* The expensive path, labelled as such: one request per vehicle instead
-                        of one per page, in exchange for VINs and source prices. */}
-                    <Button
-                      size="small"
-                      loading={syncing === s.code}
-                      onClick={() => void runSync(s.code, true)}
-                      title="Fetches each vehicle's detail record. Costs one request per vehicle, and is what makes deduplication and pricing work."
-                    >
-                      Sync + detail
-                    </Button>
-
-                    <Button size="small" danger onClick={() => confirmDelete(s)}>
-                      Delete
-                    </Button>
-                  </Space>
-                )}
-              </Space>
-            </Card>
-          ))}
-        </Flex>
-      </Card>
 
       <Card size="small">
         <Form layout="vertical" onFinish={submit}>
@@ -339,11 +212,17 @@ export function SearchPage({
         {result && result.items.length === 0 && !loading ? (
           <Empty
             description={
-              sources.every((s) => s.vehicleCount === 0)
-                ? 'The catalog is empty. Run a sync above to populate it.'
-                : 'No vehicles match these filters.'
+              // With no filters applied, "nothing matched" is not the real explanation: either
+              // the catalogue is empty or this person has switched their sources off. Saying
+              // so beats a bare "no results" that reads as a broken catalogue.
+              hasFilters
+                ? 'No vehicles match these filters.'
+                : 'Nothing to show. The catalogue may be empty, or you may have switched your '
+                  + 'sources off on the My sources screen.'
             }
-          />
+          >
+            {!hasFilters && <Button onClick={onOpenMySources}>My sources</Button>}
+          </Empty>
         ) : (
           <Row gutter={[16, 16]}>
             {result?.items.map((v) => (

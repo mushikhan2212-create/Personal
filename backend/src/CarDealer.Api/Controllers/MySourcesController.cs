@@ -2,6 +2,7 @@ using Asp.Versioning;
 using CarDealer.Api.Authorization;
 using CarDealer.Application.Abstractions;
 using CarDealer.Domain.Entities;
+using CarDealer.Domain.Enums;
 using CarDealer.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +18,11 @@ namespace CarDealer.Api.Controllers;
 /// colleagues, not other tenants, not the catalogue itself - so there is nothing here to
 /// protect with a stronger permission. Deciding which sources exist at all is a different job,
 /// gated by <c>vehicles.sync</c> on VehicleSourcesController.
+///
+/// The screen this feeds shows both: everyone gets the switches, and a caller who also holds
+/// <c>vehicles.sync</c> gets sync and delete buttons alongside them. That is why the payload
+/// carries the sync timestamps - they belong to the administrative half of the same screen,
+/// and they also tell an ordinary user how fresh a source's data is.
 /// </remarks>
 [ApiController]
 [ApiVersion("1.0")]
@@ -66,6 +72,26 @@ public sealed class MySourcesController : ControllerBase
                 ProviderType = s.ProviderType.ToString(),
                 s.IsShared,
                 VehicleCount = _db.VehicleListings.Count(l => l.VehicleSourceId == s.Id && l.IsActive),
+
+                // Last run that actually brought data in. A failed run also sets
+                // CompletedAtUtc, so counting it would put a fresh timestamp on a source whose
+                // sync had just failed outright.
+                LastSyncAtUtc = _db.SyncJobs
+                    .Where(j => j.VehicleSourceId == s.Id
+                        && j.CompletedAtUtc != null
+                        && (j.Status == SyncJobStatus.Succeeded
+                            || j.Status == SyncJobStatus.PartiallySucceeded))
+                    .Max(j => (DateTime?)j.CompletedAtUtc),
+
+                // Reported separately so a failure is visible rather than merely absent: a
+                // source that has never synced and one whose every sync has failed look
+                // identical without this.
+                LastAttemptStatus = _db.SyncJobs
+                    .Where(j => j.VehicleSourceId == s.Id && j.CompletedAtUtc != null)
+                    .OrderByDescending(j => j.CompletedAtUtc)
+                    .Select(j => j.Status.ToString())
+                    .FirstOrDefault(),
+
                 SourceId = s.Id,
             })
             .ToListAsync(ct)
@@ -78,6 +104,8 @@ public sealed class MySourcesController : ControllerBase
             s.ProviderType,
             s.IsShared,
             s.VehicleCount,
+            s.LastSyncAtUtc,
+            s.LastAttemptStatus,
             IsEnabled = !muted.Contains(s.SourceId),
         }));
     }

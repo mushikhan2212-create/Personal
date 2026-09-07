@@ -175,6 +175,10 @@ export interface MySource {
   providerType: string;
   isShared: boolean;
   vehicleCount: number;
+  /** Last run that actually brought data in; null if none ever has. */
+  lastSyncAtUtc: string | null;
+  /** Status of the last attempt, whatever became of it, so a failure is visible. */
+  lastAttemptStatus: string | null;
   /** Whether this source feeds *your* searches. Nobody else is affected by it. */
   isEnabled: boolean;
 }

@@ -100,7 +100,14 @@ can search, open a vehicle, and choose which of those sources feed their own sea
 needs nothing beyond `vehicles.read`.
 
 `manager@nihon-motors.test` is the account to check that with: signed in as Sales Manager the
-Import and Delete buttons are absent, and the endpoints behind them answer 403.
+**Import vehicles** button is absent from the header, the **My sources** screen shows only the
+on/off switches with no Sync or Delete beside them, and the endpoints behind all of those
+answer 403.
+
+Everything to do with sources now lives on **My sources**. The search screen carries the
+filters and the results and nothing else — the sources panel that used to sit above them was
+noise on the screen people spend all day on, and it also contradicted the switches by showing
+listing counts for sources the viewer had turned off.
 
 Grants are reconciled on startup from `Permissions.SystemRoleGrants`, so narrowing a system
 role there takes effect on an existing database the next time the API boots. Roles a tenant
