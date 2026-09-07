@@ -251,10 +251,12 @@ set `VITE_API_URL` in `frontend/.env.local` and restart.
 **4. Sign in** at http://localhost:5173 as `owner@nihon-motors.test` / `Dev_Passw0rd!`
 (pre-filled). The catalogue is empty — nothing has been imported yet.
 
-> **Source list empty?** The API seeds its sources at startup, and the frontend hot-reloads
-> while the backend does not — so after pulling, restart the API. Failing that, the import
-> screen has a **Register a source** button; anything you register there is DealerJson and
-> ready to import into.
+> **Source list empty?** The API seeds a starting set only into a catalogue that has **no
+> sources at all**, so a fresh database gets them on first start. Once you have registered or
+> deleted anything, the list is yours and the seeder never touches it again — deleting a sample
+> source is permanent, and your own sources are never renamed or re-typed behind you. To add
+> one, use the **Register a source** button on the import screen; anything registered there is
+> DealerJson and ready to import into.
 
 **5. Import the sample data.** Click **Import vehicles**, choose source **Exporter A**, pick
 `docs/spec/examples/import-exporter-a.json`, and click **Check without importing** first:

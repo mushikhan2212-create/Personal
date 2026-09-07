@@ -55,12 +55,31 @@ public sealed class DatabaseSeeder
     {
         await SeedPermissionsAsync(ct).ConfigureAwait(false);
         await SeedSystemRolesAsync(ct).ConfigureAwait(false);
-        await SeedVehicleSourcesAsync(ct).ConfigureAwait(false);
+
+        // Vehicle sources are operator data, not reference data, and the difference decides
+        // whether this seeder may touch them at all. Permissions and exchange rates are the
+        // platform's own facts and are reconciled on every start. Which exporters a dealer
+        // works with is theirs: they register them, rename them, and delete them.
+        //
+        // So sources are seeded only to bootstrap a catalogue that has none. Once one exists,
+        // this leaves the list alone forever. Without that rule, deleting a sample source is
+        // futile - the next restart puts it back, and an operator who has curated their own
+        // list watches the platform overrule them, which is exactly what was reported.
+        var catalogIsUnclaimed = !await _db.VehicleSources
+            .IgnoreQueryFilters()
+            .AnyAsync(ct)
+            .ConfigureAwait(false);
+
+        if (catalogIsUnclaimed)
+        {
+            await SeedVehicleSourcesAsync(ct).ConfigureAwait(false);
+        }
+
         await SeedExchangeRatesAsync(ct).ConfigureAwait(false);
 
         if (includeDevelopmentUsers)
         {
-            await SeedDevelopmentFixtureAsync(ct).ConfigureAwait(false);
+            await SeedDevelopmentFixtureAsync(catalogIsUnclaimed, ct).ConfigureAwait(false);
         }
     }
 
@@ -376,9 +395,15 @@ public sealed class DatabaseSeeder
         }
     }
 
-    private async Task SeedDevelopmentFixtureAsync(CancellationToken ct)
+    private async Task SeedDevelopmentFixtureAsync(bool catalogIsUnclaimed, CancellationToken ct)
     {
-        await SeedSampleImportSourcesAsync(ct).ConfigureAwait(false);
+        // Same rule as the shared sources above, and the flag is computed once before either
+        // runs: otherwise seeding the first set would make the catalogue look claimed and
+        // silently skip the samples on a genuinely fresh database.
+        if (catalogIsUnclaimed)
+        {
+            await SeedSampleImportSourcesAsync(ct).ConfigureAwait(false);
+        }
 
         var nihon = await EnsureTenantAsync(NihonPublicId, NihonSlug, "Nihon Motors", "JPY", "JP", ct)
             .ConfigureAwait(false);
