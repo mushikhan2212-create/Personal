@@ -12,6 +12,7 @@ using CarDealer.Infrastructure.Auth;
 using CarDealer.Infrastructure.Caching;
 using CarDealer.Infrastructure.Jobs;
 using CarDealer.Infrastructure.Persistence;
+using CarDealer.Infrastructure.Reporting;
 using CarDealer.Infrastructure.Pricing;
 using CarDealer.Infrastructure.Services;
 using CarDealer.Infrastructure.Storage;
@@ -127,6 +128,7 @@ public static class DependencyInjection
 
         services.AddScoped<VehicleSyncService>();
         services.AddScoped<VehicleSourceRemovalService>();
+        services.AddScoped<CatalogReportService>();
     }
 
     private static void AddCaching(

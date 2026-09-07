@@ -87,6 +87,20 @@ The last two exist to make multi-tenant identity testable at all: `multi@example
 permissions resolve per tenant rather than globally, and `suspended@example.test` proves a
 suspension in one tenant does not lock the user out of another.
 
+### Measuring the catalogue
+
+`GET /api/v1/catalog-report` computes what master prompt §8 asks the POC to report — field
+completeness per source, freshness, deduplication effectiveness, image coverage, and five timed
+searches — from whatever is currently imported. It needs `vehicles.sync`.
+
+```bash
+curl -s http://localhost:5246/api/v1/catalog-report \
+  -H "Authorization: Bearer $TOKEN" | python -m json.tool
+```
+
+It is computed rather than written down because a number typed into a document is stale the
+moment the next import runs. `docs/spec/09-poc-evaluation.md` is written from its output.
+
 ### Who can do what
 
 | | Search the catalogue | My Sources | Register, import, sync, delete sources |
