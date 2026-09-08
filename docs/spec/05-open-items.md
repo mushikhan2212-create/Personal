@@ -103,6 +103,11 @@ API costs is a real unit-economics risk.
 volume, seats), plan tiers, and enforcement behavior at the limit — hard stop, soft warning, or
 overage.
 
+**Settled:** what a plan attaches to. [D14](02-decisions.md#d14--every-account-is-a-tenant-including-a-solo-trader)
+fixes every account as a tenant, including the single-person "personal" tier, so a subscription
+hangs off `Tenant` and every limit is enforced in the one scope that already exists. The limits
+themselves still need somewhere to live — see [O13](#o13--tenant-settings-and-retention-configuration).
+
 ## O6 — Observability and alerting
 
 Master prompt §3 specifies structured logging and correlation IDs. There are no metrics, no

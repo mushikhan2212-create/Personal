@@ -679,3 +679,74 @@ indistinguishable from a file that was half empty.
   producer, which is why `lastSeenAtUtc` is the one field the format refuses to default and why
   every vehicle card shows how old its listing is.
 
+
+## D14 — Every account is a tenant, including a solo trader
+
+### Problem
+
+The product will sell two subscription tiers: enterprise, and personal for a **solo trader** —
+one person, no staff, running a real vehicle-export business. "Personal" invites an obvious
+shortcut: skip the tenant, hang the data off the user, and avoid the ceremony of a
+one-person organisation.
+
+The question is whether a personal account has a tenant at all.
+
+### Decision
+
+**Every account is a tenant.** A solo trader gets a tenant with exactly one member, who holds
+`TenantOwner`. There is no tenantless mode, and `TenantId` is never nullable on data that
+belongs to an account.
+
+"Personal" is a **plan**, not a **shape**. It changes limits and what the interface shows,
+never how data is scoped.
+
+### Why
+
+**Every isolation guarantee in this system is keyed on `TenantId`** — the query filters,
+`GuardGlobalCatalogWrites`, and `TenantIdOrZero` returning zero so that an unresolved tenant
+matches nothing. A tenantless mode is a second data-access path on which none of those hold,
+and the second path is where the leak happens. The value of "zero is never a valid tenant id"
+comes from there being exactly one way data is scoped.
+
+**Null already means something else.** The catalogue filter is
+`TenantId == null || TenantId == TenantIdOrZero`, where null means *shared with every tenant*
+(D1). If personal accounts stored rows with a null tenant, a solo trader's customers would land
+on the shared side of that expression. One copy-pasted filter would publish one trader's
+customer list to every account on the platform.
+
+**Billing has nothing to attach to otherwise.** A subscription belongs to an account. Tenantless,
+it hangs off a `User`, which means two subscription models, two enforcement paths, two quota
+checks, and `if (tenant is null)` in front of every limit.
+
+**Growth stops being a migration.** A solo trader who hires their first employee becomes a team
+by adding a `TenantUser` row. Tenantless, the same event migrates every customer, requirement,
+source and audit row they own — the riskiest possible migration, run against live data, for the
+customers who are succeeding.
+
+**D2 already says this.** A user is a global identity; a tenant is the workspace. A personal
+account is a workspace with one member, which is not a special case of the model but an
+instance of it.
+
+### What "personal" changes
+
+Presentation and limits only:
+
+- Sign-up creates tenant, membership and `TenantOwner` in one transaction, with a generated
+  name and slug.
+- While a tenant has one seat, the tenant switcher, the members screen and the invite flow are
+  hidden — not disabled, absent.
+- Seat count, source count, import volume and later AI spend are capped by plan.
+
+The system roles need no change: the sole member is Tenant Owner and holds everything.
+
+### What this does not do
+
+It does not define the plans. Tiers, metered dimensions and behaviour at the limit — hard stop,
+soft warning or overage — remain open in
+[O5](05-open-items.md#o5--billing-metering-and-quotas), and the limits themselves need somewhere
+to live, which is [O13](05-open-items.md#o13--tenant-settings-and-retention-configuration).
+Those two are one piece of work, and this decision only fixes what they hang off.
+
+It also does not add anything now. `Tenant` carries no plan today and needs none until
+subscriptions are built; this decision exists so that the CRM being built in Phase 1 is not
+designed around a tenantless case that will never exist.
