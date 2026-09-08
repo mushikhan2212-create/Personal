@@ -63,12 +63,25 @@ public sealed class VehiclesController : ControllerBase
             });
         }
 
+        if (request.MinMileage is { } minKm && request.MaxMileage is { } maxKm && minKm > maxKm)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "minMileage cannot be greater than maxMileage.",
+                Status = StatusCodes.Status400BadRequest,
+            });
+        }
+
         var result = await _search.SearchAsync(
             new VehicleSearchQuery
             {
                 Text = request.Q,
+                Make = request.Make,
+                Model = request.Model,
+                BodyType = request.BodyType,
                 MinYear = request.MinYear,
                 MaxYear = request.MaxYear,
+                MinMileage = request.MinMileage,
                 MaxMileage = request.MaxMileage,
                 SteeringSide = request.SteeringSide,
                 FuelType = request.FuelType,
@@ -296,9 +309,27 @@ public sealed record VehicleSearchRequest
     /// <summary>Free text over make, model and variant.</summary>
     public string? Q { get; init; }
 
+    /// <summary>
+    /// Make and model as their own filters rather than free text.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="Q"/> because they mean different things: "corolla" in free text
+    /// also matches a variant string that mentions it, which is what you want when browsing and
+    /// not what you want when a customer has asked for a Corolla. A saved customer requirement
+    /// filters on these, so the search screen has to be able to express the same thing - a
+    /// requirement that cannot be reproduced by hand cannot be checked by hand.
+    /// </remarks>
+    public string? Make { get; init; }
+
+    public string? Model { get; init; }
+
+    public string? BodyType { get; init; }
+
     public int? MinYear { get; init; }
 
     public int? MaxYear { get; init; }
+
+    public int? MinMileage { get; init; }
 
     public int? MaxMileage { get; init; }
 
