@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { App as AntApp, ConfigProvider, message } from 'antd';
 import { AppShell } from './components/AppShell';
 import type { NavKey } from './components/AppShell';
+import { CustomerDetailPage } from './pages/CustomerDetailPage';
+import { CustomersPage } from './pages/CustomersPage';
 import { ImportPage } from './pages/ImportPage';
 import { LoginPage } from './pages/LoginPage';
 import { MySourcesPage } from './pages/MySourcesPage';
@@ -29,7 +31,8 @@ type View =
   // The three the sidebar can reach carry no payload, so they are exactly a NavKey. Saying it
   // that way rather than repeating the names keeps the nav and the router from drifting apart.
   | { name: NavKey }
-  | { name: 'vehicle'; id: string };
+  | { name: 'vehicle'; id: string }
+  | { name: 'customer'; id: string };
 
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -76,7 +79,9 @@ export function App() {
   }, [mode]);
 
   /** The detail view has no sidebar entry of its own; it belongs with the vehicle list. */
-  const activeNav: NavKey = view.name === 'vehicle' ? 'search' : view.name;
+  const activeNav: NavKey = view.name === 'vehicle' ? 'search'
+    : view.name === 'customer' ? 'customers'
+      : view.name;
 
   return (
     <ConfigProvider theme={mode === 'dark' ? darkTheme : lightTheme}>
@@ -97,6 +102,22 @@ export function App() {
                   onOpenVehicle={(id) => setView({ name: 'vehicle', id })}
                   onOpenMySources={() => setView({ name: 'my-sources' })}
                   catalogVersion={catalogVersion}
+                />
+              )}
+
+              {view.name === 'customers' && (
+                <CustomersPage
+                  canManage={session.permissions.includes('customers.manage')}
+                  onOpenCustomer={(id) => setView({ name: 'customer', id })}
+                />
+              )}
+
+              {view.name === 'customer' && (
+                <CustomerDetailPage
+                  publicId={view.id}
+                  canManage={session.permissions.includes('customers.manage')}
+                  onBack={() => setView({ name: 'customers' })}
+                  onOpenVehicle={(id) => setView({ name: 'vehicle', id })}
                 />
               )}
 

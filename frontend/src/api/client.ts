@@ -1,6 +1,7 @@
 import type {
-  ImportResult, LoginResponse, MySource, SyncResult, VehicleDetail, VehicleSearchResponse,
-  VehicleSearchSort, VehicleSourceSummary,
+  CustomerDetail, CustomerInput, CustomerListResponse, CustomerStatus,
+  ImportResult, LoginResponse, MySource, RequirementInput, RequirementMatches, SyncResult,
+  VehicleDetail, VehicleSearchResponse, VehicleSearchSort, VehicleSourceSummary,
 } from './types';
 
 /**
@@ -262,3 +263,48 @@ export async function importFile(
 
   return (await response.json()) as ImportResult;
 }
+
+// --- Phase 1 CRM -------------------------------------------------------------------------
+
+export const listCustomers = (
+  q: string, status: CustomerStatus | undefined, page: number, pageSize: number,
+): Promise<CustomerListResponse> => {
+  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+
+  if (q.trim()) params.set('q', q.trim());
+  if (status) params.set('status', status);
+
+  return request<CustomerListResponse>(`/customers?${params}`);
+};
+
+export const getCustomer = (publicId: string): Promise<CustomerDetail> =>
+  request<CustomerDetail>(`/customers/${publicId}`);
+
+export const createCustomer = (input: CustomerInput): Promise<{ publicId: string }> =>
+  request<{ publicId: string }>('/customers', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+
+export const updateCustomer = (publicId: string, input: CustomerInput): Promise<unknown> =>
+  request(`/customers/${publicId}`, { method: 'PUT', body: JSON.stringify(input) });
+
+export const deleteCustomer = (publicId: string): Promise<unknown> =>
+  request(`/customers/${publicId}`, { method: 'DELETE' });
+
+export const addRequirement = (
+  publicId: string, input: RequirementInput,
+): Promise<{ id: number }> =>
+  request<{ id: number }>(`/customers/${publicId}/requirements`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+
+export const deleteRequirement = (publicId: string, id: number): Promise<unknown> =>
+  request(`/customers/${publicId}/requirements/${id}`, { method: 'DELETE' });
+
+export const getMatches = (
+  publicId: string, id: number, page = 1, pageSize = 25,
+): Promise<RequirementMatches> =>
+  request<RequirementMatches>(
+    `/customers/${publicId}/requirements/${id}/matches?page=${page}&pageSize=${pageSize}`);

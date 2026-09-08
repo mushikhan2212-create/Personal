@@ -182,3 +182,121 @@ export interface MySource {
   /** Whether this source feeds *your* searches. Nobody else is affected by it. */
   isEnabled: boolean;
 }
+
+// --- Phase 1 CRM -------------------------------------------------------------------------
+
+export type CustomerStatus = 'Unknown' | 'Lead' | 'Active' | 'Customer' | 'Dormant' | 'Closed';
+
+export type LeadSource =
+  | 'Unknown' | 'WalkIn' | 'Referral' | 'Website'
+  | 'WhatsApp' | 'SocialMedia' | 'Marketplace' | 'Repeat';
+
+export type RequirementStatus = 'Unknown' | 'Open' | 'OnHold' | 'Fulfilled' | 'Cancelled';
+
+export interface CustomerListItem {
+  publicId: string;
+  firstName: string | null;
+  lastName: string | null;
+  phone: string | null;
+  email: string | null;
+  countryCode: string | null;
+  city: string | null;
+  status: CustomerStatus;
+  leadSource: LeadSource;
+  /** How many requirements are still being shopped, so a list row shows who needs work. */
+  openRequirements: number;
+  updatedAtUtc: string;
+}
+
+export interface CustomerListResponse {
+  items: CustomerListItem[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface Requirement {
+  id: number;
+  name: string | null;
+  make: string | null;
+  model: string | null;
+  variant: string | null;
+  bodyType: string | null;
+  exteriorColor: string | null;
+  minYear: number | null;
+  maxYear: number | null;
+  minMileage: number | null;
+  maxMileage: number | null;
+  transmission: Transmission | null;
+  fuelType: FuelType | null;
+  minPrice: number | null;
+  maxPrice: number | null;
+  currencyCode: string | null;
+  destinationCountryCode: string | null;
+  destinationCity: string | null;
+  rawRequirementText: string | null;
+  status: RequirementStatus;
+  updatedAtUtc: string;
+}
+
+export interface CustomerDetail {
+  publicId: string;
+  firstName: string | null;
+  lastName: string | null;
+  phone: string | null;
+  email: string | null;
+  countryCode: string | null;
+  city: string | null;
+  preferredLanguage: string | null;
+  status: CustomerStatus;
+  leadSource: LeadSource;
+  notes: string | null;
+  assignedUserId: number | null;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+  requirements: Requirement[];
+}
+
+/** What the API accepts for a customer. Every field optional; the API requires one of four. */
+export interface CustomerInput {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  email?: string;
+  countryCode?: string;
+  city?: string;
+  preferredLanguage?: string;
+  status?: CustomerStatus;
+  leadSource?: LeadSource;
+  notes?: string;
+}
+
+export interface RequirementInput {
+  name?: string;
+  make?: string;
+  model?: string;
+  bodyType?: string;
+  minYear?: number;
+  maxYear?: number;
+  minMileage?: number;
+  maxMileage?: number;
+  transmission?: Transmission;
+  fuelType?: FuelType;
+  minPrice?: number;
+  maxPrice?: number;
+  currencyCode?: string;
+  destinationCountryCode?: string;
+  rawRequirementText?: string;
+  status?: RequirementStatus;
+}
+
+export interface RequirementMatches extends VehicleSearchResponse {
+  requirementId: number;
+  /**
+   * Which of the requirement's fields actually narrowed the search, in the API's own words.
+   *
+   * Shown rather than inferred client-side, because the server is the only place that knows
+   * what it applied - including what it deliberately did not, such as destination country.
+   */
+  matchedOn: string[];
+}

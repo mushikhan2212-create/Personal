@@ -5,7 +5,7 @@ import {
 import type { Session } from '../App';
 
 /** The screens the sidebar can reach. Kept as a union so a typo is a build error. */
-export type NavKey = 'search' | 'my-sources' | 'import';
+export type NavKey = 'search' | 'customers' | 'my-sources' | 'import';
 
 interface Props {
   session: Session;
@@ -29,9 +29,11 @@ export function AppShell({
   session, active, onNavigate, onSignOut, mode, onToggleMode, children,
 }: Props) {
   const canSync = session.permissions.includes('vehicles.sync');
+  const canSeeCustomers = session.permissions.includes('customers.read');
 
   const items = [
     { key: 'search', icon: <SearchGlyph />, label: 'Vehicles' },
+    ...(canSeeCustomers ? [{ key: 'customers', icon: <PeopleGlyph />, label: 'Customers' }] : []),
     { key: 'my-sources', icon: <SourcesGlyph />, label: 'My sources' },
     ...(canSync ? [{ key: 'import', icon: <ImportGlyph />, label: 'Import' }] : []),
   ];
@@ -141,6 +143,16 @@ function SearchGlyph() {
     <svg width="16" height="16" viewBox="0 0 24 24">
       <circle {...stroke} cx="11" cy="11" r="6" />
       <path {...stroke} d="M20 20l-4.5-4.5" />
+    </svg>
+  );
+}
+
+function PeopleGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24">
+      <circle {...stroke} cx="9" cy="8" r="3.2" />
+      <path {...stroke} d="M3.5 19.5a5.5 5.5 0 0111 0" />
+      <path {...stroke} d="M16 5.5a3.2 3.2 0 010 5.6M17.5 14.2a5.5 5.5 0 013 5.3" />
     </svg>
   );
 }
