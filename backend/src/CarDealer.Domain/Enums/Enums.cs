@@ -232,3 +232,60 @@ public enum SyncJobItemStatus : byte
     Skipped = 4,
     Failed = 5,
 }
+
+/// <summary>Where a customer is in the sales relationship (master prompt section 9).</summary>
+public enum CustomerStatus : byte
+{
+    Unknown = 0,
+
+    /// <summary>Enquired, not yet qualified.</summary>
+    Lead = 1,
+
+    /// <summary>A real buyer with a real requirement.</summary>
+    Active = 2,
+
+    /// <summary>Has bought at least once.</summary>
+    Customer = 3,
+
+    /// <summary>Went quiet. Kept, because they come back.</summary>
+    Dormant = 4,
+
+    /// <summary>Explicitly not to be contacted again.</summary>
+    Closed = 5,
+}
+
+/// <summary>How a customer first reached the dealer.</summary>
+/// <remarks>
+/// Deliberately coarse. A finer taxonomy is worth building once there is data to say which
+/// distinctions pay for themselves; inventing twenty values now would mostly produce twenty
+/// ways to spell "unknown".
+/// </remarks>
+public enum LeadSource : byte
+{
+    Unknown = 0,
+    WalkIn = 1,
+    Referral = 2,
+    Website = 3,
+    WhatsApp = 4,
+    SocialMedia = 5,
+    Marketplace = 6,
+    Repeat = 7,
+}
+
+/// <summary>Whether a requirement is still being shopped for.</summary>
+public enum RequirementStatus : byte
+{
+    Unknown = 0,
+
+    /// <summary>Still looking; this is what matching runs against.</summary>
+    Open = 1,
+
+    /// <summary>Paused by the customer, kept so it can be resumed.</summary>
+    OnHold = 2,
+
+    /// <summary>A car was bought against it.</summary>
+    Fulfilled = 3,
+
+    /// <summary>Abandoned. Kept for the demand reporting Phase 3 will want.</summary>
+    Cancelled = 4,
+}

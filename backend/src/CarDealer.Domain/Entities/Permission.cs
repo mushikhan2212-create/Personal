@@ -59,6 +59,19 @@ public static class Permissions
     /// </remarks>
     public const string VehiclesSync = "vehicles.sync";
 
+    /// <summary>Read the tenant's customers and their requirements.</summary>
+    public const string CustomersRead = "customers.read";
+
+    /// <summary>
+    /// Create, edit and delete customers and requirements.
+    /// </summary>
+    /// <remarks>
+    /// Separate from reading because deleting a customer is irreversible by design - erasure has
+    /// to mean erasure - and because a read-only account exists precisely so someone can be
+    /// shown the book without being able to rewrite it.
+    /// </remarks>
+    public const string CustomersManage = "customers.manage";
+
     public static readonly IReadOnlyDictionary<string, string> All = new Dictionary<string, string>
     {
         [TenantsRead] = "View tenant details and settings",
@@ -70,6 +83,8 @@ public static class Permissions
         [AuditRead] = "Read the audit log",
         [VehiclesRead] = "Search and view the vehicle catalog",
         [VehiclesSync] = "Register, sync, import into and delete vehicle sources",
+        [CustomersRead] = "View customers and their requirements",
+        [CustomersManage] = "Create, edit and delete customers and requirements",
     };
 
     /// <summary>
@@ -89,15 +104,19 @@ public static class Permissions
             [SystemRoles.Admin] =
             [
                 TenantsRead, UsersRead, UsersManage, RolesRead, RolesManage, AuditRead,
-                VehiclesRead, VehiclesSync,
+                VehiclesRead, VehiclesSync, CustomersRead, CustomersManage,
             ],
             // Sales Manager reads the catalog like everyone else but does not administer
             // sources: importing publishes cars into the shared catalog, which is Admin's call.
-            [SystemRoles.SalesManager] = [TenantsRead, UsersRead, RolesRead, VehiclesRead],
-            [SystemRoles.Salesperson] = [TenantsRead, UsersRead, VehiclesRead],
+            [SystemRoles.SalesManager] =
+                [TenantsRead, UsersRead, RolesRead, VehiclesRead, CustomersRead, CustomersManage],
+            // Selling is the job. A salesperson who cannot record who they are selling to
+            // has no product here.
+            [SystemRoles.Salesperson] =
+                [TenantsRead, UsersRead, VehiclesRead, CustomersRead, CustomersManage],
 
             // ReadOnly can search. Withholding it would make the role useless in a product
             // whose main screen is a search.
-            [SystemRoles.ReadOnly] = [TenantsRead, VehiclesRead],
+            [SystemRoles.ReadOnly] = [TenantsRead, VehiclesRead, CustomersRead],
         };
 }

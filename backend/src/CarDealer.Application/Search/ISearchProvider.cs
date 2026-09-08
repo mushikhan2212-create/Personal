@@ -32,9 +32,30 @@ public sealed record VehicleSearchQuery
 
     public int? ModelId { get; init; }
 
+    /// <summary>
+    /// Structured make and model filters, as opposed to <see cref="Text"/>.
+    /// </summary>
+    /// <remarks>
+    /// A customer requirement names a make and model exactly, and matching it through the free
+    /// text box would also match a variant or a title that merely mentions the word. These are
+    /// separate so a requirement for a Toyota does not match "Toyota-style alloy wheels" in
+    /// some other car's description.
+    /// </remarks>
+    public string? Make { get; init; }
+
+    public string? Model { get; init; }
+
+    public string? BodyType { get; init; }
+
     public int? MinYear { get; init; }
 
     public int? MaxYear { get; init; }
+
+    /// <summary>
+    /// Mileage floor. Rarely useful on the search screen, required by requirements: a trader
+    /// buying to resell often wants a run-in car rather than delivery mileage.
+    /// </summary>
+    public int? MinMileage { get; init; }
 
     public int? MaxMileage { get; init; }
 

@@ -73,15 +73,26 @@ public sealed class SqlServerSearchProvider : ISearchProvider
     /// otherwise match everything rather than nothing, and the user would have no way to tell
     /// the difference between a broken filter and a popular car.
     /// </remarks>
+    /// <summary>
+    /// Neutralises the LIKE wildcards a user can type, so a search for "100%" finds the car
+    /// named that rather than every car in the catalog.
+    /// </summary>
+    /// <remarks>
+    /// Shared by the free-text search and the structured make/model/body filters. Two copies of
+    /// this would be two chances to forget one of the four characters, and the one that gets
+    /// forgotten is always the backslash - which has to be escaped first, or it doubles the
+    /// escapes added after it.
+    /// </remarks>
+    private static string Escape(string term) => term
+        .Replace("\\", "\\\\")
+        .Replace("%", "\\%")
+        .Replace("_", "\\_")
+        .Replace("[", "\\[");
+
     private static IEnumerable<string> BuildSearchPatterns(string text) =>
         text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Take(MaxSearchTerms)
-            .Select(term => "%"
-                + term.Replace("\\", "\\\\")
-                    .Replace("%", "\\%")
-                    .Replace("_", "\\_")
-                    .Replace("[", "\\[")
-                + "%");
+            .Select(term => $"%{Escape(term)}%");
 
     public async Task<VehicleSearchResult> SearchAsync(
         VehicleSearchQuery query, CancellationToken ct = default)
@@ -148,8 +159,35 @@ public sealed class SqlServerSearchProvider : ISearchProvider
 
         if (query.MakeId is { } makeId) listings = listings.Where(l => l.Vehicle.MakeId == makeId);
         if (query.ModelId is { } modelId) listings = listings.Where(l => l.Vehicle.ModelId == modelId);
+
+        // Matched against the raw text rather than the canonical ids, for the same reason the
+        // free-text search is: an alias the catalog has not mapped leaves MakeId null, and a
+        // requirement for a Toyota must still find one. Contains rather than equality because
+        // exporters write "TOYOTA", "Toyota Motor" and "Corolla Altis" for the same thing.
+        if (!string.IsNullOrWhiteSpace(query.Make))
+        {
+            var make = $"%{Escape(query.Make.Trim())}%";
+            listings = listings.Where(l =>
+                l.Vehicle.Make != null && EF.Functions.Like(l.Vehicle.Make, make, LikeEscape));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Model))
+        {
+            var model = $"%{Escape(query.Model.Trim())}%";
+            listings = listings.Where(l =>
+                l.Vehicle.Model != null && EF.Functions.Like(l.Vehicle.Model, model, LikeEscape));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.BodyType))
+        {
+            var body = $"%{Escape(query.BodyType.Trim())}%";
+            listings = listings.Where(l =>
+                l.Vehicle.BodyType != null && EF.Functions.Like(l.Vehicle.BodyType, body, LikeEscape));
+        }
+
         if (query.MinYear is { } minYear) listings = listings.Where(l => l.Vehicle.ModelYear >= minYear);
         if (query.MaxYear is { } maxYear) listings = listings.Where(l => l.Vehicle.ModelYear <= maxYear);
+        if (query.MinMileage is { } minMileage) listings = listings.Where(l => l.Vehicle.Mileage >= minMileage);
         if (query.MaxMileage is { } maxMileage) listings = listings.Where(l => l.Vehicle.Mileage <= maxMileage);
 
         if (query.SteeringSide is { } steering) listings = listings.Where(l => l.Vehicle.SteeringSide == steering);

@@ -1,0 +1,91 @@
+using CarDealer.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+namespace CarDealer.Infrastructure.Persistence.Configurations;
+
+/// <summary>
+/// Customers and the requirements they are shopping against.
+/// </summary>
+/// <remarks>
+/// Indexes are those named in SQL schema spec section 7 - lookup by phone and by email within a
+/// tenant, and requirements by customer and status. All three are the queries the CRM screens
+/// actually run.
+/// </remarks>
+public class CustomerConfiguration : IEntityTypeConfiguration<Customer>
+{
+    public void Configure(EntityTypeBuilder<Customer> builder)
+    {
+        builder.ToTable("Customers");
+
+        builder.HasKey(c => c.Id);
+
+        builder.Property(c => c.PublicId).IsRequired();
+        builder.HasIndex(c => c.PublicId).IsUnique();
+
+        builder.Property(c => c.FirstName).HasMaxLength(128);
+        builder.Property(c => c.LastName).HasMaxLength(128);
+        builder.Property(c => c.Phone).HasMaxLength(32);
+        builder.Property(c => c.Email).HasMaxLength(256);
+        builder.Property(c => c.CountryCode).HasMaxLength(2);
+        builder.Property(c => c.City).HasMaxLength(128);
+        builder.Property(c => c.PreferredLanguage).HasMaxLength(16);
+        builder.Property(c => c.Notes).HasMaxLength(4000);
+
+        builder.HasOne(c => c.Tenant)
+            .WithMany()
+            .HasForeignKey(c => c.TenantId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Restrict, not Cascade: deleting a user must never take their customers with them.
+        // The relationship survives the salesperson leaving, and someone reassigns it.
+        builder.HasOne(c => c.AssignedUser)
+            .WithMany()
+            .HasForeignKey(c => c.AssignedUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Deleting a customer takes their requirements. Erasure has to mean erasure - see the
+        // remarks on Customer about O3.
+        builder.HasMany(c => c.Requirements)
+            .WithOne(r => r.Customer)
+            .HasForeignKey(r => r.CustomerId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Not unique: a household shares a phone number and a company shares a reception desk.
+        builder.HasIndex(c => new { c.TenantId, c.Phone });
+        builder.HasIndex(c => new { c.TenantId, c.Email });
+    }
+}
+
+public class CustomerRequirementConfiguration : IEntityTypeConfiguration<CustomerRequirement>
+{
+    public void Configure(EntityTypeBuilder<CustomerRequirement> builder)
+    {
+        builder.ToTable("CustomerRequirements");
+
+        builder.HasKey(r => r.Id);
+
+        builder.Property(r => r.Name).HasMaxLength(128);
+        builder.Property(r => r.Make).HasMaxLength(64);
+        builder.Property(r => r.Model).HasMaxLength(64);
+        builder.Property(r => r.Variant).HasMaxLength(128);
+        builder.Property(r => r.BodyType).HasMaxLength(64);
+        builder.Property(r => r.ExteriorColor).HasMaxLength(64);
+        builder.Property(r => r.CurrencyCode).HasMaxLength(3);
+        builder.Property(r => r.DestinationCountryCode).HasMaxLength(2);
+        builder.Property(r => r.DestinationCity).HasMaxLength(128);
+        builder.Property(r => r.RawRequirementText).HasMaxLength(4000);
+
+        // Money, not floating point: 18,2 matches VehicleListing.Price so a budget and a price
+        // are the same kind of number on both sides of a comparison.
+        builder.Property(r => r.MinPrice).HasPrecision(18, 2);
+        builder.Property(r => r.MaxPrice).HasPrecision(18, 2);
+
+        builder.HasOne(r => r.Tenant)
+            .WithMany()
+            .HasForeignKey(r => r.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(r => new { r.TenantId, r.CustomerId, r.Status });
+    }
+}

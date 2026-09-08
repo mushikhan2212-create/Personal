@@ -62,6 +62,10 @@ public class CarDealerDbContext : DbContext
 
     public DbSet<VehicleMergeHistory> VehicleMergeHistories => Set<VehicleMergeHistory>();
 
+    public DbSet<Customer> Customers => Set<Customer>();
+
+    public DbSet<CustomerRequirement> CustomerRequirements => Set<CustomerRequirement>();
+
     public DbSet<Make> Makes => Set<Make>();
 
     public DbSet<Model> Models => Set<Model>();
@@ -151,6 +155,19 @@ public class CarDealerDbContext : DbContext
             .HasQueryFilter(e => e.TenantId == null || e.TenantId == _tenantContext.TenantIdOrZero);
 
         modelBuilder.Entity<VehicleSourceConfiguration>()
+            .HasQueryFilter(e => e.TenantId == _tenantContext.TenantIdOrZero);
+
+        // --- Phase 1 CRM -----------------------------------------------------------------
+        //
+        // Flat equality, deliberately NOT the catalog's "null means global" rule. A shared car
+        // is the product; a shared customer list is a breach. TenantId is non-nullable on both,
+        // so there is no value that could put a customer on the global side of a filter - and
+        // when no tenant is resolved these compare against zero and match nothing, which is the
+        // correct failure mode for personal data.
+        modelBuilder.Entity<Customer>()
+            .HasQueryFilter(e => e.TenantId == _tenantContext.TenantIdOrZero);
+
+        modelBuilder.Entity<CustomerRequirement>()
             .HasQueryFilter(e => e.TenantId == _tenantContext.TenantIdOrZero);
 
         // UserVehicleSourcePreference is deliberately absent from this list. It is keyed by
