@@ -405,3 +405,77 @@ export interface MessagePhoto {
   /** Through our API, so the browser saves the file instead of opening it in a tab. */
   downloadUrl: string | null;
 }
+
+// --- Duplicate review (open item O15) -------------------------------------------------
+
+/**
+ * One side of a suggested duplicate: enough of the car to judge it without leaving the queue.
+ */
+export interface DuplicateSide {
+  id: number;
+  publicId: string;
+  make: string | null;
+  model: string | null;
+  variant: string | null;
+  modelYear: number | null;
+  mileage: number | null;
+  mileageUnit: MileageUnit;
+  exteriorColor: string | null;
+  engineDisplacementCc: number | null;
+  fuelType: FuelType;
+  transmission: Transmission;
+  steeringSide: SteeringSide;
+  status: string;
+  createdAtUtc: string;
+  offers: DuplicateOffer[];
+  photo: string | null;
+}
+
+export interface DuplicateOffer {
+  id: number;
+  source: string | null;
+  price: number | null;
+  currencyCode: string | null;
+  priceType: PriceType;
+  sourceUrl: string | null;
+}
+
+/**
+ * Why the platform thinks two rows are one car.
+ *
+ * A negative weight is a contradiction rather than a missing signal — "1598 cc vs 1798 cc"
+ * counts against the pair, and the reviewer should see that as plainly as the agreements.
+ */
+export interface DuplicateSignal {
+  name: string;
+  weight: number;
+  detail: string;
+}
+
+export interface DuplicateCandidate {
+  id: number;
+  /** 0 to 1. Nothing below 0.5 is ever written. */
+  score: number;
+  status: 'Pending' | 'Merged' | 'Rejected' | 'Unknown';
+  createdAtUtc: string;
+  reviewedAtUtc: string | null;
+  signals: DuplicateSignal[];
+  left: DuplicateSide;
+  right: DuplicateSide;
+}
+
+export interface DuplicateQueue {
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  items: DuplicateCandidate[];
+}
+
+export interface MergeRecord {
+  id: number;
+  mergedAtUtc: string;
+  revertedAtUtc: string | null;
+  mergedBy: string | null;
+  surviving: { publicId: string; make: string | null; model: string | null; modelYear: number | null } | null;
+  archived: { publicId: string; make: string | null; model: string | null; modelYear: number | null } | null;
+}

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using CarDealer.Application.Formatting;
 using CarDealer.Domain.Entities;
 using CarDealer.Domain.Enums;
 
@@ -52,33 +53,16 @@ public static class MessageComposer
 
         var specs = new[]
         {
-            vehicle.FuelType switch
-            {
-                FuelType.Unknown => null,
-                FuelType.PluginHybrid => "Plug-in hybrid",
-                FuelType.Lpg => "LPG",
-                FuelType.Cng => "CNG",
-                var f => f.ToString(),
-            },
-
-            // Spelled the way the trade does. Left as ToString this reads
-            // "ContinuouslyVariable" - a C# identifier, in a message a customer opens on their
-            // phone, which is the one place an enum name must never surface.
-            vehicle.Transmission switch
-            {
-                Transmission.Unknown => null,
-                Transmission.ContinuouslyVariable => "CVT",
-                Transmission.SemiAutomatic => "Semi-automatic",
-                Transmission.DualClutch => "Dual clutch",
-                var t => t.ToString(),
-            },
-
-            vehicle.SteeringSide switch
-            {
-                SteeringSide.RightHandDrive => "RHD",
-                SteeringSide.LeftHandDrive => "LHD",
-                _ => null,
-            },
+            // Through SpecWords. Left as ToString these read "ContinuouslyVariable" - a C#
+            // identifier, in a message a customer opens on their phone, which is the one place
+            // an enum name must never surface.
+            vehicle.FuelType == FuelType.Unknown ? null : SpecWords.Of(vehicle.FuelType),
+            vehicle.Transmission == Transmission.Unknown
+                ? null
+                : SpecWords.Of(vehicle.Transmission),
+            vehicle.SteeringSide == SteeringSide.Unknown
+                ? null
+                : SpecWords.Of(vehicle.SteeringSide),
         }.Where(s => s is not null);
 
         if (specs.Any())

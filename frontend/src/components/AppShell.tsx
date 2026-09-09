@@ -5,7 +5,8 @@ import {
 import type { Session } from '../App';
 
 /** The screens the sidebar can reach. Kept as a union so a typo is a build error. */
-export type NavKey = 'search' | 'customers' | 'alerts' | 'my-sources' | 'import';
+export type NavKey =
+  'search' | 'customers' | 'alerts' | 'duplicates' | 'my-sources' | 'import';
 
 interface Props {
   session: Session;
@@ -43,6 +44,7 @@ export function AppShell({
 }: Props) {
   const canSync = session.permissions.includes('vehicles.sync');
   const canSeeCustomers = session.permissions.includes('customers.read');
+  const canMerge = session.permissions.includes('vehicles.merge');
 
   const items = [
     { key: 'search', icon: <SearchGlyph />, label: 'Vehicles' },
@@ -62,6 +64,11 @@ export function AppShell({
             ),
           },
         ]
+      : []),
+    // Below the selling screens and above the administrative ones, which is where it belongs:
+    // reviewing duplicates is housekeeping on the catalogue, not part of anybody's day.
+    ...(canMerge
+      ? [{ key: 'duplicates', icon: <MergeGlyph />, label: 'Duplicates' }]
       : []),
     { key: 'my-sources', icon: <SourcesGlyph />, label: 'My sources' },
     ...(canSync ? [{ key: 'import', icon: <ImportGlyph />, label: 'Import' }] : []),
@@ -294,6 +301,18 @@ function SourcesGlyph({ className }: GlyphProps) {
       <ellipse {...stroke} cx="12" cy="6" rx="7" ry="3" />
       <path {...stroke} d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6" />
       <path {...stroke} d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
+    </svg>
+  );
+}
+
+/** Two paths converging into one — what a merge does. */
+function MergeGlyph({ className }: GlyphProps) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" className={className}>
+      <path {...stroke} d="M6 3v4c0 2.2 1.8 4 4 4h4" />
+      <path {...stroke} d="M18 3v4c0 2.2-1.8 4-4 4h-4" />
+      <path {...stroke} d="M12 11v10" />
+      <path {...stroke} d="M9 18l3 3 3-3" />
     </svg>
   );
 }

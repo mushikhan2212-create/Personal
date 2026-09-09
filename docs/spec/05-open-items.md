@@ -19,10 +19,11 @@ needs a named owner and a date — an item with neither is not tracked, it is fo
 | [O8](#o8--publicid-coverage) | `PublicId` coverage | Eng | Phase 1 API | _unassigned_ | _unset_ |
 | ~~O9~~ | ~~Phase 0 acceptance criteria~~ | Product | — | **Closed** | see [`06-`](06-phase-0-acceptance.md) |
 | [O10](#o10--destination-import-eligibility-rules) | Destination import-eligibility rules | Product/Legal | Phase 1 hard filters | _unassigned_ | _unset_ |
-| [O11](#o11--saved-search-alerting) | Saved-search alerting | Product | — (scope gap) | _unassigned_ | _unset_ |
+| ~~O11~~ | ~~Saved-search alerting~~ | Product | — | **Closed** | Phase 1, see [O11](#o11--saved-search-alerting) |
 | [O12](#o12--environments-backup-and-dr) | Environments, backup and DR | Eng | Production | _unassigned_ | _unset_ |
 | [O13](#o13--tenant-settings-and-retention-configuration) | Tenant settings / retention config | Eng | Phase 1 | _unassigned_ | _unset_ |
 | [O14](#o14--background-job-library-licensing) | Background job library licensing | Legal | — (minor) | _unassigned_ | _unset_ |
+| ~~O15~~ | ~~Near-duplicate detection~~ | Product/Eng | — | **Closed** | Phase 1, see [O15](#o15--near-duplicate-detection-without-a-strong-identifier) |
 
 ---
 
@@ -245,19 +246,33 @@ string `"-"` as `chassis_code` for 27 of its 50 cars, and SBT sends `"COROLLA AL
 49. Any rule permissive enough to match the twelve genuine duplicates on weak signals is
 permissive enough to merge those into one vehicle each.
 
-**Decision needed:** whether to score near-duplicates and surface them for human confirmation.
-The `VehicleMatchCandidate` table already exists, is unused, and carries `MatchCandidateStatus`
-(`Pending`/`Merged`/`Rejected`) — the schema anticipated exactly this and stopped short of
-deciding it.
+**Closed in Phase 1** as decision [D16](02-decisions.md#d16--near-duplicates-are-suggested-never-merged),
+built as the review queue this section proposed: `VehicleMatchCandidate` rows written by a
+nightly scan, a screen that shows the two cars side by side with the reasons, and a merge that
+only happens when a person with `vehicles.merge` says so.
 
-The shape to evaluate, when it is evaluated:
+One thing the proposed shape got wrong, and the measurement that corrected it. The suggestion
+above was to *score* on year, odometer, colour and engine displacement together. Scoring the
+odometer fuzzily is exactly what must not happen — re-measured on the same 104-record corpus:
 
-- score on year + odometer + colour + engine displacement, with the odometer doing most of the
-  work, since two different cars rarely share one to the kilometre
-- write candidates, never merges; a pair above the threshold becomes a `Pending` row
-- a person confirms or rejects, and `CanonicalHashSource` already records which rule matched so
-  a VIN match can be trusted more than a scored one during review
-- until confirmed, both cars stay in the catalogue and search shows both
+| Rule | Pairs |
+| --- | --- |
+| year + colour + odometer, **exact** | **12** — all genuine |
+| odometer within 10 km | 16, and one car draws three rival candidates |
+| odometer within 1% | 28 |
+| year + colour, no odometer | 269 |
 
-**Owner and date required.** Until this is decided, an aggregated catalogue shows duplicates,
-and that should be stated to users rather than discovered by them.
+The tolerance bands break on near-new stock: SBT alone lists four separate 2026 cars of one
+colour reading 4, 9, 11 and 78 km, and any band wide enough to absorb a rounding difference
+makes those indistinguishable. So the odometer became a **blocking key** rather than a scored
+signal — two vehicles are compared only if make, model, year, odometer and mileage unit all
+agree exactly — and the score ranks how much else corroborates, which is what orders the queue.
+
+What the same measurement also found: **duplicates are not only cross-source.** BE FORWARD
+lists one car twice under two stock numbers, which the lot-number hash keeps apart because they
+genuinely are two listings. The scan therefore ignores the source entirely.
+
+Result on that corpus: 14 pairs examined out of 4,851 possible, 13 raised — the 12 documented
+duplicates plus BE FORWARD's own — and one declined, two 2026 cars both reading 6 km in
+different colours. What remains open is the threshold's calibration against a larger and more
+varied catalogue; the constants carry their reasoning in `DuplicateScorer`.

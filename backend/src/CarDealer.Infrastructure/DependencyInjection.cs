@@ -11,6 +11,7 @@ using CarDealer.Application.Auth;
 using CarDealer.Infrastructure.Audit;
 using CarDealer.Infrastructure.Auth;
 using CarDealer.Infrastructure.Alerts;
+using CarDealer.Infrastructure.Duplicates;
 using CarDealer.Infrastructure.Caching;
 using CarDealer.Infrastructure.Import;
 using CarDealer.Infrastructure.Jobs;
@@ -82,6 +83,13 @@ public static class DependencyInjection
         // every tenant creates those scopes itself, so it is a singleton over the factory.
         services.AddScoped<RequirementAlertScanner>();
         services.AddSingleton<RequirementAlertJob>();
+
+        // Duplicate review (open item O15). The scan is scoped for its DbContext but is not
+        // tenant-scoped - it grouped on TenantScope precisely so it could run once over the
+        // shared catalogue instead of once per tenant.
+        services.AddScoped<DuplicateScanService>();
+        services.AddScoped<VehicleMergeService>();
+        services.AddSingleton<DuplicateScanJob>();
 
         // Messaging behind its abstraction, the same shape as search and the vehicle sources.
         // The WhatsApp Business API provider replaces this one line when Meta verification

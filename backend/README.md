@@ -105,10 +105,10 @@ is written from its output — including the POC's central finding, that twelve 
 
 ### Who can do what
 
-| | Search the catalogue | My Sources | Register, import, sync, delete sources |
-| --- | --- | --- | --- |
-| TenantOwner, Admin | yes | yes | yes |
-| SalesManager, Salesperson, ReadOnly | yes | yes | **no** |
+| | Search the catalogue | My Sources | Register, import, sync, delete sources | Review duplicates |
+| --- | --- | --- | --- | --- |
+| TenantOwner, Admin | yes | yes | yes | yes |
+| SalesManager, Salesperson, ReadOnly | yes | yes | **no** | **no** |
 
 Registering a source or importing a file publishes cars into the shared catalogue that every
 tenant reads, so it needs `vehicles.sync`, held by Admin and Tenant Owner only. Everyone else
@@ -444,6 +444,58 @@ suppress a colleague's alert would lose a sale for a reason nobody could see aft
 
 `customers.read` sees alerts; `customers.manage` is needed to mark them seen or to trigger a
 scan, because in a shared inbox clearing an alert tells colleagues it has been dealt with.
+
+## Finding duplicate cars
+
+The catalogue aggregates exporters who quote the same wholesale stock at different margins, and
+most of them supply no VIN — so [D3](../docs/spec/02-decisions.md)'s auto-merge, which needs a
+strong identifier, never fires on them. Measured on 104 real listings from two exporters: twelve
+pairs were the same twelve cars and the platform matched none of them.
+
+**Duplicates** in the sidebar is the review queue that fixes it. It shows each pair side by
+side with the reasons, and nothing is merged until somebody says so — decision
+[D16](../docs/spec/02-decisions.md#d16--near-duplicates-are-suggested-never-merged).
+
+| | |
+| --- | --- |
+| `GET /api/v1/duplicates` | the queue, strongest suggestion first |
+| `POST /api/v1/duplicates/{id}/merge` | confirm: the offers move onto one car, the other is archived |
+| `POST /api/v1/duplicates/{id}/reject` | two different cars; never suggested again |
+| `GET /api/v1/duplicates/merges` | what has been merged |
+| `POST /api/v1/duplicates/merges/{id}/revert` | undo one |
+| `POST /api/v1/duplicates/scan` | look now instead of waiting for 3am |
+
+All of them need `vehicles.merge`, held by Tenant Owner and Admin. Merging edits the catalogue
+every tenant reads, so it is an administrative act rather than a selling one.
+
+### What makes two rows a pair
+
+Two vehicles are only ever compared when **make, model, year, odometer and mileage unit agree
+exactly**. The odometer is a gate rather than a fuzzy signal, and that is deliberate — on the
+corpus above, an exact match found the twelve genuine pairs, a ±10 km tolerance found sixteen
+and handed one car three rival candidates, and dropping the odometer altogether produced 269.
+Near-new stock is what breaks the tolerant rules: one exporter listed four separate 2026 cars of
+one colour reading 4, 9, 11 and 78 km.
+
+The score then says how much *else* agrees, which is what orders the queue. It never decides
+anything. Two rules worth knowing:
+
+- A pair whose two vehicles both carry a VIN and carry different ones is never suggested,
+  however identical everything else looks.
+- An odometer under 1,000 km scores lower, because two delivery-mileage cars genuinely can read
+  the same number.
+
+The scan does not care which source a listing came from — one exporter listing the same car
+twice under two stock numbers is a real case and the lot-number hash keeps those apart on
+purpose.
+
+### Undoing a merge
+
+Every merge records the exact listings and images it moved, and **Merge history** on the screen
+puts them back. That matters because the catalogue is shared: a wrong merge hides a car from
+every tenant, and the person who notices is usually not the one who made it. The absorbed
+vehicle is archived rather than deleted, which is what makes the reversal possible. Anything the
+survivor gained *after* the merge stays where it is.
 
 ## Importing customers from a spreadsheet
 

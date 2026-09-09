@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { App as AntApp, ConfigProvider, message } from 'antd';
 import { AlertsPage } from './pages/AlertsPage';
+import { DuplicatesPage } from './pages/DuplicatesPage';
 import { AppShell } from './components/AppShell';
 import type { NavKey } from './components/AppShell';
 import { CustomerDetailPage } from './pages/CustomerDetailPage';
@@ -154,6 +155,13 @@ export function App() {
                   onOpenCustomer={(id) => setView({ name: 'customer', id })}
                   onOpenVehicle={(id) => setView({ name: 'vehicle', id })}
                   onChanged={() => setAlertVersion((v) => v + 1)}
+                />
+              )}
+
+              {view.name === 'duplicates' && (
+                <DuplicatesPage
+                  onOpenVehicle={(id) => setView({ name: 'vehicle', id })}
+                  onChanged={() => setCatalogVersion((v) => v + 1)}
                 />
               )}
 

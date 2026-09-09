@@ -59,6 +59,22 @@ public static class Permissions
     /// </remarks>
     public const string VehiclesSync = "vehicles.sync";
 
+    /// <summary>
+    /// Review suggested duplicate vehicles, and merge or reject them.
+    /// </summary>
+    /// <remarks>
+    /// Held by Admin and Tenant Owner only, on the same reasoning as
+    /// <see cref="VehiclesSync"/>: most of the catalogue is the global rows decision D1 shares,
+    /// so merging two of them changes what every tenant sees, and archiving the wrong one hides
+    /// a car from people the reviewer has never met. That is an administrative act.
+    ///
+    /// Separate from <see cref="VehiclesSync"/> rather than folded into it because the two are
+    /// different powers over the catalogue - one feeds it, the other edits which of its rows are
+    /// the same car - and a dealer may reasonably want somebody importing stock who is not also
+    /// deciding its identity.
+    /// </remarks>
+    public const string VehiclesMerge = "vehicles.merge";
+
     /// <summary>Read the tenant's customers and their requirements.</summary>
     public const string CustomersRead = "customers.read";
 
@@ -83,6 +99,7 @@ public static class Permissions
         [AuditRead] = "Read the audit log",
         [VehiclesRead] = "Search and view the vehicle catalog",
         [VehiclesSync] = "Register, sync, import into and delete vehicle sources",
+        [VehiclesMerge] = "Review suggested duplicate vehicles and merge them",
         [CustomersRead] = "View customers and their requirements",
         [CustomersManage] = "Create, edit and delete customers and requirements",
     };
@@ -104,7 +121,7 @@ public static class Permissions
             [SystemRoles.Admin] =
             [
                 TenantsRead, UsersRead, UsersManage, RolesRead, RolesManage, AuditRead,
-                VehiclesRead, VehiclesSync, CustomersRead, CustomersManage,
+                VehiclesRead, VehiclesSync, VehiclesMerge, CustomersRead, CustomersManage,
             ],
             // Sales Manager reads the catalog like everyone else but does not administer
             // sources: importing publishes cars into the shared catalog, which is Admin's call.

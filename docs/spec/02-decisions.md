@@ -28,6 +28,7 @@ Schema consequences are in [`04-schema-delta.md`](04-schema-delta.md).
 | [D13](#d13--ingestion-is-source-agnostic-and-the-platform-does-not-scrape) | Ingestion is source-agnostic and the platform does not scrape (**supersedes part of D12**) | Accepted |
 | [D14](#d14--every-account-is-a-tenant-including-a-solo-trader) | Every account is a tenant, including a solo trader | Accepted |
 | [D15](#d15--whatsapp-ships-as-a-click-to-chat-link-until-the-business-api-is-approved) | WhatsApp ships as a click-to-chat link until the Business API is approved | Accepted |
+| [D16](#d16--near-duplicates-are-suggested-never-merged) | Near-duplicates are suggested, never merged | Accepted |
 
 ---
 
@@ -800,3 +801,76 @@ a real person who is not the customer.
 
 Nothing sends without a person pressing send, which satisfies §18's exclusion of autonomous
 customer messaging by construction rather than by policy.
+
+---
+
+## D16 — Near-duplicates are suggested, never merged
+
+**Status:** Accepted · **Closes:** [O15](05-open-items.md#o15--near-duplicate-detection-without-a-strong-identifier)
+
+### Context
+
+[D3](#d3--deduplication-strong-id-only-auto-merge) auto-merges only on an exact strong
+identifier, and that is still right. But the POC measured what it costs on this trade's data:
+of 104 real listings from two Japanese exporters, twelve pairs are the same twelve cars, none
+of them carries a VIN or a chassis number, and the platform matched **none**. Roughly 12% of an
+aggregated catalogue was duplicated and invisible — which is precisely the price comparison a
+broker's customer came for.
+
+D3 cannot be loosened to fix it. The same corpus shows why: BE FORWARD sends the literal string
+`"-"` as `chassis_code` for 27 of its 50 cars. Any rule permissive enough to catch the twelve on
+weak signals merges those 27 into one vehicle.
+
+### Decision
+
+A second path that **writes suggestions and merges nothing**. A nightly scan pairs vehicles,
+scores them, and writes `Pending` rows to `VehicleMatchCandidate`; a person holding
+`vehicles.merge` confirms or rejects each one. Until they do, both cars stay in the catalogue
+and search shows both.
+
+**The odometer is a blocking key, not a scored signal.** Two vehicles are compared only when
+make, model, year, odometer and mileage unit agree *exactly*. This is the load-bearing choice
+and it was measured, not assumed:
+
+| Rule | Pairs on the 104-record corpus |
+| --- | --- |
+| exact odometer | **12** — all genuine |
+| within 10 km | 16, and one car draws three rival candidates |
+| within 1% | 28 |
+| no odometer at all | 269 |
+
+Tolerance bands break on near-new stock, where one exporter lists four separate 2026 cars of one
+colour reading 4, 9, 11 and 78 km. A band wide enough to absorb a rounding difference cannot
+tell those apart, and a queue offering three candidates for one car teaches its reviewer to stop
+reading it — after which the genuine duplicates go unmerged anyway.
+
+The score then ranks how much else corroborates (colour, engine, gearbox, fuel, steering, body),
+and it **orders the queue rather than deciding anything**. Two rules inside it are worth stating:
+
+- An odometer below 1,000 km opens at a lower weight. A match at 274,570 km is near-proof; two
+  delivery-mileage cars reading 9 km is a coincidence this corpus actually contains.
+- Two vehicles that both carry a VIN and carry *different* ones are never suggested, whatever
+  else agrees. Decisive negative evidence outranks every similarity.
+
+**The scan ignores which source a listing came from.** The obvious shape is "two exporters, one
+car" and most are — but BE FORWARD also lists one car twice under two stock numbers, which the
+lot-number hash deliberately keeps apart because they genuinely are two listings.
+
+### Consequences
+
+Merging edits the shared catalogue, so it needs `vehicles.merge` (Tenant Owner and Admin), and
+it runs in a unit of work with no tenant resolved — the same route source registration and
+import already take past `GuardGlobalCatalogWrites`. The guard is not weakened.
+
+Every merge is reversible and records the exact listing and image ids it moved. Under
+[D1](#d1--global-vehicle-catalog-with-tenant-overlay) a wrong merge is wrong for every tenant at once
+and the person who spots it is rarely the person who made it, so "put it back" cannot be
+guesswork: the survivor may have gained other listings since, and reversing must not drag those
+out. The absorbed vehicle is archived, never deleted, which is what makes that possible.
+
+A rejected pair keeps its row. Deleting it would put the same suggestion back in the queue on
+the next scan.
+
+**What stays open:** the 0.50 threshold is calibrated against one 104-record corpus of a single
+model. It is a starting point, and the constants carry their reasoning in `DuplicateScorer` so
+that re-tuning against a larger catalogue is an informed edit rather than a guess.

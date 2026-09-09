@@ -211,7 +211,7 @@ public sealed class CustomerMatchingTests : IClassFixture<ApiFactory>
             .Select(a => a.GetString()!).ToList();
 
         Assert.Contains("transmission CVT", applied);
-        Assert.Contains("fuel plug-in hybrid", applied);
+        Assert.Contains("fuel Plug-in hybrid", applied);
 
         Assert.DoesNotContain(applied, a => a.Contains("ContinuouslyVariable", StringComparison.Ordinal));
         Assert.DoesNotContain(applied, a => a.Contains("PluginHybrid", StringComparison.Ordinal));

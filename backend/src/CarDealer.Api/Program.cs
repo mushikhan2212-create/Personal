@@ -13,6 +13,7 @@ using CarDealer.Infrastructure;
 using CarDealer.Infrastructure.Auth;
 using CarDealer.Infrastructure.Persistence;
 using CarDealer.Infrastructure.Alerts;
+using CarDealer.Infrastructure.Duplicates;
 using Hangfire;
 using Hangfire.SqlServer;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -335,6 +336,15 @@ static void ScheduleRecurringJobs(WebApplication app)
         "requirement-alerts",
         job => job.RunAsync(CancellationToken.None),
         Cron.Hourly());
+
+    // Duplicate detection (open item O15). Daily rather than hourly: a suggestion is reviewed by
+    // a person when they get to it, so finding one six hours sooner changes nothing, and the
+    // scan reads the whole catalogue rather than one tenant's requirements. Running it at 3am
+    // keeps that read off the working day.
+    jobs.AddOrUpdate<DuplicateScanJob>(
+        "duplicate-scan",
+        job => job.RunAsync(CancellationToken.None),
+        Cron.Daily(3));
 }
 
 static async Task ApplyStartupTasksAsync(WebApplication app)

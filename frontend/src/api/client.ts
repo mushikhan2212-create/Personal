@@ -3,6 +3,7 @@ import type {
   CustomerDetail, CustomerImportResult, CustomerInput, CustomerListResponse, CustomerStatus,
   ImportResult, LoginResponse, MySource, RequirementInput, RequirementMatches, SyncResult,
   VehicleDetail, VehicleSearchResponse, VehicleSearchSort, VehicleSourceSummary,
+  DuplicateQueue, MergeRecord,
 } from './types';
 
 /**
@@ -421,3 +422,40 @@ export async function savePhoto(path: string, filename: string): Promise<void> {
   // produces an empty file.
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+// --- Duplicate review (open item O15) -------------------------------------------------
+
+export const countDuplicates = (): Promise<{ pending: number }> =>
+  request('/duplicates/count');
+
+export const listDuplicates = (
+  status: 'Pending' | 'Merged' | 'Rejected' = 'Pending', page = 1, pageSize = 20,
+): Promise<DuplicateQueue> =>
+  request(`/duplicates?status=${status}&page=${page}&pageSize=${pageSize}`);
+
+/** Confirms two rows are one car. The duplicate's offers move onto the survivor. */
+export const mergeDuplicate = (id: number, note?: string): Promise<{
+  survivingVehicleId: string;
+  archivedVehicleId: string;
+  listingsMoved: number;
+  imagesMoved: number;
+}> => request(`/duplicates/${id}/merge`, {
+  method: 'POST',
+  body: JSON.stringify({ note }),
+});
+
+export const rejectDuplicate = (id: number): Promise<void> =>
+  request(`/duplicates/${id}/reject`, { method: 'POST' });
+
+export const listMerges = (): Promise<{ items: MergeRecord[] }> =>
+  request('/duplicates/merges');
+
+export const revertMerge = (id: number): Promise<void> =>
+  request(`/duplicates/merges/${id}/revert`, { method: 'POST' });
+
+/** Runs the scan now rather than waiting for the nightly job. Idempotent. */
+export const scanForDuplicates = (): Promise<{
+  pairsExamined: number;
+  candidatesRaised: number;
+  groupsSkipped: number;
+}> => request('/duplicates/scan', { method: 'POST' });
