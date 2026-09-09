@@ -1,5 +1,5 @@
 import type {
-  CustomerDetail, CustomerInput, CustomerListResponse, CustomerStatus,
+  CustomerDetail, CustomerImportResult, CustomerInput, CustomerListResponse, CustomerStatus,
   ImportResult, LoginResponse, MySource, RequirementInput, RequirementMatches, SyncResult,
   VehicleDetail, VehicleSearchResponse, VehicleSearchSort, VehicleSourceSummary,
 } from './types';
@@ -308,3 +308,37 @@ export const getMatches = (
 ): Promise<RequirementMatches> =>
   request<RequirementMatches>(
     `/customers/${publicId}/requirements/${id}/matches?page=${page}&pageSize=${pageSize}`);
+
+/**
+ * Uploads a customer list.
+ *
+ * Multipart for the same reason as the vehicle import: `request` sets a JSON content type, and
+ * a multipart body needs the browser to set its own boundary.
+ */
+export async function importCustomers(
+  file: File, dryRun: boolean,
+): Promise<CustomerImportResult> {
+  const body = new FormData();
+  body.append('file', file);
+
+  const response = await fetch(`/api/v1/customers/import?dryRun=${dryRun}`, {
+    method: 'POST',
+    headers: accessTokenHeader(),
+    body,
+  });
+
+  if (!response.ok) {
+    let message = `Import failed with ${response.status}.`;
+
+    try {
+      const problem = (await response.json()) as { title?: string; detail?: string };
+      message = [problem.title, problem.detail].filter(Boolean).join(' ') || message;
+    } catch {
+      // Non-JSON body; the status carries the meaning.
+    }
+
+    throw new ApiError(response.status, message);
+  }
+
+  return (await response.json()) as CustomerImportResult;
+}

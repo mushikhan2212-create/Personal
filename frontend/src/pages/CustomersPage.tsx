@@ -6,6 +6,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { createCustomer, listCustomers } from '../api/client';
 import type { CustomerInput, CustomerListItem, CustomerStatus } from '../api/types';
+import { CustomerImportDrawer } from '../components/CustomerImportDrawer';
 import { formatUtc } from '../format';
 
 interface Props {
@@ -42,6 +43,7 @@ export function CustomersPage({ canManage, onOpenCustomer }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm<CustomerInput>();
 
@@ -177,7 +179,10 @@ export function CustomersPage({ canManage, onOpenCustomer }: Props) {
           />
 
           {canManage && (
-            <Button type="primary" onClick={() => setDrawerOpen(true)}>Add customer</Button>
+            <>
+              <Button onClick={() => setImportOpen(true)}>Import CSV</Button>
+              <Button type="primary" onClick={() => setDrawerOpen(true)}>Add customer</Button>
+            </>
           )}
         </Flex>
       </Card>
@@ -211,6 +216,14 @@ export function CustomersPage({ canManage, onOpenCustomer }: Props) {
             : false}
         />
       </Card>
+
+      <CustomerImportDrawer
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        // Straight back to page one: an import that added three hundred people has changed
+        // what this list is, and leaving it on the old page would look as if nothing happened.
+        onImported={() => { setPage(1); void load(1, query, status); }}
+      />
 
       <Drawer
         title="Add customer"

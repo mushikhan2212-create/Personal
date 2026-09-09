@@ -342,6 +342,51 @@ Master prompt §18 forbids unlimited ingestion without filters. Put an allow-lis
 An absent or empty list means no restriction on that dimension — never "allow nothing".
 Excluded records are counted and returned as `skippedOutOfScope` rather than dropped silently.
 
+## Importing customers from a spreadsheet
+
+`POST /api/v1/customers/import` takes a CSV as multipart form data and needs `customers.manage`.
+The **Import CSV** button on the Customers screen is the same endpoint.
+
+```bash
+# Always dry-run first: it reports exactly what a real import would do and writes nothing.
+curl -X POST "http://localhost:5246/api/v1/customers/import?dryRun=true" \
+  -H "Authorization: Bearer <access token>" -F "file=@contacts.csv"
+```
+
+The first row must be a header. Column names are matched after lower-casing and stripping
+punctuation, so `First Name`, `first_name` and `FIRSTNAME` are one column:
+
+| Field | Headings understood |
+| --- | --- |
+| First name | first name, first, given name, forename |
+| Last name | last name, last, surname, family name |
+| Either | name, full name, customer name — split on the first space |
+| Phone | phone, mobile, cell, whatsapp, contact number |
+| Email | email, e-mail address, mail |
+| City | city, town |
+| Country | country, country code — must be a two-letter code |
+| Status | status — one of Unknown, Lead, Active, Customer, Dormant, Closed |
+| Source | source, lead source, came from |
+| Language | language, preferred language |
+| Notes | notes, note, comment, comments, remarks |
+
+Anything else is ignored rather than rejected. Quoted fields may contain commas and line
+breaks, semicolon-delimited exports are detected, and the byte order mark Excel writes is
+stripped — without that the first heading never matches and the file looks column-less.
+
+**A customer already on the tenant's books is skipped, not overwritten.** An import is usually
+a re-import of the same sheet a month later, and overwriting would discard the notes, status
+and assignment a salesperson has edited since. Duplicates are matched on the phone number
+(punctuation ignored) or the email (case ignored), against both the database and rows already
+accepted from the same file. Each skipped row is listed by name so it can be reconciled by hand.
+
+A row that cannot be read is reported and the rest still import — one bad row out of four
+hundred must not cost the other 399. The limits are 5,000 rows and 8 MB per request.
+
+Unlike a vehicle import, the uploaded file is **not** stored: it is parsed and discarded. A
+spreadsheet of names and phone numbers should not sit in blob storage while
+[O3](../docs/spec/05-open-items.md#o3--pii-and-data-protection) is unanswered.
+
 ## Migrations
 
 ```bash

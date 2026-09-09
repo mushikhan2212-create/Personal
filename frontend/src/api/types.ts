@@ -300,3 +300,26 @@ export interface RequirementMatches extends VehicleSearchResponse {
    */
   matchedOn: string[];
 }
+
+/** One row the import could not use, or chose not to. */
+export interface ImportProblem {
+  /** 1-based position among the file's customers, not its text lines. */
+  row: number;
+  /** How the row identifies itself — a name, or failing that a phone or email. */
+  label: string;
+  message: string;
+}
+
+export interface CustomerImportResult {
+  dryRun: boolean;
+  totalRows: number;
+  created: number;
+  /** Rows skipped because that person is already on the books. Never overwritten. */
+  duplicates: number;
+  invalid: number;
+  /** A few names that would be added, so a dry run is checkable at a glance. */
+  sample: string[];
+  problems: ImportProblem[];
+  /** Problems past the reporting cap, counted rather than listed. */
+  unreportedProblems: number;
+}

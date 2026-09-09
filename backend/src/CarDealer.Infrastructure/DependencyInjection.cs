@@ -10,6 +10,7 @@ using CarDealer.Application.Auth;
 using CarDealer.Infrastructure.Audit;
 using CarDealer.Infrastructure.Auth;
 using CarDealer.Infrastructure.Caching;
+using CarDealer.Infrastructure.Import;
 using CarDealer.Infrastructure.Jobs;
 using CarDealer.Infrastructure.Persistence;
 using CarDealer.Infrastructure.Reporting;
@@ -69,6 +70,10 @@ public static class DependencyInjection
         // to this one line.
         services.AddScoped<ISearchProvider, SqlServerSearchProvider>();
         services.AddScoped<IExchangeRateService, ExchangeRateService>();
+
+        // Reads the tenant's own customer list to find duplicates, so it is scoped like every
+        // other tenant-aware service rather than shared.
+        services.AddScoped<CustomerCsvImportService>();
 
         AddVehicleSources(services, configuration);
 

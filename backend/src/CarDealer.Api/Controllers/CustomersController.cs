@@ -4,6 +4,7 @@ using CarDealer.Application.Abstractions;
 using CarDealer.Application.Search;
 using CarDealer.Domain.Entities;
 using CarDealer.Domain.Enums;
+using CarDealer.Infrastructure.Import;
 using CarDealer.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +26,16 @@ namespace CarDealer.Api.Controllers;
 [Route("api/v{version:apiVersion}/customers")]
 public sealed class CustomersController : ControllerBase
 {
+    /// <summary>
+    /// The largest CSV one import will accept.
+    /// </summary>
+    /// <remarks>
+    /// Well under the vehicle import's 64 MB, because the row limit binds first: 5,000
+    /// customers of name, phone and email is a few hundred kilobytes, so a file past this is
+    /// not a contact list.
+    /// </remarks>
+    private const long MaxImportBytes = 8L * 1024 * 1024;
+
     private readonly CarDealerDbContext _db;
     private readonly ITenantContext _tenant;
     private readonly ISearchProvider _search;
@@ -167,6 +178,85 @@ public sealed class CustomersController : ControllerBase
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);
 
         return Created($"/api/v1/customers/{customer.PublicId}", new { customer.PublicId });
+    }
+
+    /// <summary>
+    /// Creates customers in bulk from a spreadsheet export.
+    /// </summary>
+    /// <remarks>
+    /// Use <c>dryRun=true</c> first. It reports exactly what a real import would do - how many
+    /// customers would be created, which rows are already here, and what is wrong with the rest
+    /// - and writes nothing. On a file of four hundred contacts that is the difference between
+    /// finding a mis-mapped column now and finding it afterwards.
+    ///
+    /// A row naming someone this tenant already has is <b>skipped, not overwritten</b>. An
+    /// import is usually a re-import of the same sheet, and overwriting would discard the notes
+    /// and status a salesperson has edited since. Skipped rows are listed by name, so
+    /// reconciling them by hand is possible; an overwrite would not be.
+    ///
+    /// This is the fastest way to put a large amount of personal data into the platform, which
+    /// makes it the endpoint that matters most for
+    /// <see href="../../../docs/spec/05-open-items.md">O3</see>. It holds nothing the manual
+    /// form does not, and the file itself is parsed and discarded rather than stored - unlike a
+    /// vehicle import, which keeps the payload for re-runs. A spreadsheet of customers is not
+    /// something to leave lying in blob storage while the retention policy is still unwritten.
+    /// </remarks>
+    [HttpPost("import")]
+    [HasPermission(Permissions.CustomersManage)]
+    [RequestSizeLimit(MaxImportBytes)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> Import(
+        IFormFile file,
+        [FromServices] CustomerCsvImportService importer,
+        [FromQuery] bool dryRun = false,
+        CancellationToken ct = default)
+    {
+        if (file is null || file.Length == 0)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "No file was uploaded.",
+                Detail = "Post the CSV as multipart/form-data under the field name 'file'.",
+                Status = StatusCodes.Status400BadRequest,
+            });
+        }
+
+        string csv;
+
+        // detectEncodingFromByteOrderMarks handles the UTF-16 a spreadsheet occasionally
+        // writes; the reader strips the UTF-8 mark itself, which this does not remove.
+        using (var reader = new StreamReader(file.OpenReadStream(), detectEncodingFromByteOrderMarks: true))
+        {
+            csv = await reader.ReadToEndAsync(ct).ConfigureAwait(false);
+        }
+
+        var result = await importer.ImportAsync(csv, dryRun, ct).ConfigureAwait(false);
+
+        if (result.RejectedReason is { } reason)
+        {
+            // The file could not be read as a customer list at all - as distinct from a file
+            // whose individual rows have problems, which is a 200 with those rows listed.
+            return BadRequest(new ProblemDetails
+            {
+                Title = "That file could not be imported.",
+                Detail = reason,
+                Status = StatusCodes.Status400BadRequest,
+            });
+        }
+
+        return Ok(new
+        {
+            dryRun = result.DryRun,
+            totalRows = result.TotalRows,
+            created = result.Created,
+            duplicates = result.Duplicates,
+            invalid = result.Invalid,
+            sample = result.Sample,
+            problems = result.Problems.Select(p => new { p.Row, p.Label, p.Message }),
+            unreportedProblems = result.UnreportedProblems,
+        });
     }
 
     [HttpPut("{publicId:guid}")]
