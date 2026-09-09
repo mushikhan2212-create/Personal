@@ -10,6 +10,8 @@ import type {
   CustomerDetail, Requirement, RequirementInput, RequirementMatches,
 } from '../api/types';
 import { VehicleCards } from '../components/VehicleCards';
+import { WhatsAppButton } from '../components/WhatsAppButton';
+import { WhatsAppDrawer } from '../components/WhatsAppDrawer';
 import { formatUtc } from '../format';
 
 interface Props {
@@ -46,6 +48,7 @@ export function CustomerDetailPage({ publicId, canManage, onBack, onOpenVehicle 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [messaging, setMessaging] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm<RequirementInput>();
 
@@ -201,7 +204,10 @@ export function CustomerDetailPage({ publicId, canManage, onBack, onOpenVehicle 
             </Flex>
           </Flex>
 
-          {canManage && <Button danger onClick={removeCustomer}>Delete</Button>}
+          <Flex gap={8} wrap>
+            {canManage && <WhatsAppButton onClick={() => setMessaging(true)} />}
+            {canManage && <Button danger onClick={removeCustomer}>Delete</Button>}
+          </Flex>
         </Flex>
 
         {customer.notes && (
@@ -267,6 +273,13 @@ export function CustomerDetailPage({ publicId, canManage, onBack, onOpenVehicle 
             />
           )}
       </Card>
+
+      <WhatsAppDrawer
+        open={messaging}
+        onClose={() => setMessaging(false)}
+        customerPublicId={publicId}
+        customerName={name}
+      />
 
       <Drawer
         title="What are they looking for?"

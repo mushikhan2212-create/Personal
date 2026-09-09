@@ -368,3 +368,25 @@ export interface AlertScanResult {
   requirementsScanned: number;
   alertsRaised: number;
 }
+
+/**
+ * A message prepared for a customer.
+ *
+ * `canSendDirectly` is false while the platform is on click-to-chat links: a person taps and
+ * sends from their own phone. It flips to true when the WhatsApp Business API is in place, and
+ * the screens read it rather than assuming — so the button can say what will actually happen.
+ */
+export interface MessageDraft {
+  channel: string;
+  canSendDirectly: boolean;
+  canReceive: boolean;
+  /** The number as stored on the customer. */
+  to: string | null;
+  /** Digits-only international form, or null when it could not be determined. */
+  normalizedPhone: string | null;
+  body: string;
+  canSend: boolean;
+  handoffUrl: string | null;
+  /** Why no message could be prepared, in words a salesperson can act on. */
+  reason: string | null;
+}

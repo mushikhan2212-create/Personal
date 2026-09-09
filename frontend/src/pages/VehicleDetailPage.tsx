@@ -4,12 +4,16 @@ import {
   Typography,
 } from 'antd';
 import { getVehicle } from '../api/client';
+import { WhatsAppButton } from '../components/WhatsAppButton';
+import { WhatsAppDrawer } from '../components/WhatsAppDrawer';
 import type { CanonicalHashSource, VehicleDetail, VehicleDetailListing } from '../api/types';
 import { STALE_AFTER_DAYS, ageInDays, formatUtc } from '../format';
 
 interface Props {
   id: string;
   onBack: () => void;
+  /** Whether this user may message customers. The button is hidden rather than disabled. */
+  canMessage: boolean;
 }
 
 const PRICE_TYPE_LABEL: Record<string, string> = {
@@ -51,10 +55,11 @@ const MISSING_PHOTO = 'data:image/svg+xml;utf8,'
     + 'text-anchor="middle">No photo</text></svg>',
   );
 
-export function VehicleDetailPage({ id, onBack }: Props) {
+export function VehicleDetailPage({ id, onBack, canMessage }: Props) {
   const [vehicle, setVehicle] = useState<VehicleDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [messaging, setMessaging] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -142,9 +147,23 @@ export function VehicleDetailPage({ id, onBack }: Props) {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Button type="text" size="small" onClick={onBack} style={{ paddingInline: 4 }}>
-        ← Back to search
-      </Button>
+      <Flex justify="space-between" align="center" wrap gap={12}>
+        <Button type="text" size="small" onClick={onBack} style={{ paddingInline: 4 }}>
+          ← Back to search
+        </Button>
+
+        {/* Here the car is known and the customer is not, so the drawer opens with a picker. */}
+        {canMessage && (
+          <WhatsAppButton onClick={() => setMessaging(true)}>Send to a customer</WhatsAppButton>
+        )}
+      </Flex>
+
+      <WhatsAppDrawer
+        open={messaging}
+        onClose={() => setMessaging(false)}
+        customerPublicId={null}
+        vehiclePublicId={id}
+      />
 
       {age !== null && age > STALE_AFTER_DAYS && (
         <Alert

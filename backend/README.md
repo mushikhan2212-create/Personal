@@ -342,6 +342,44 @@ Master prompt §18 forbids unlimited ingestion without filters. Put an allow-lis
 An absent or empty list means no restriction on that dimension — never "allow nothing".
 Excluded records are counted and returned as `skippedOutOfScope` rather than dropped silently.
 
+## Messaging a customer on WhatsApp
+
+`POST /api/v1/messaging/whatsapp/draft` composes a message about a car and returns a
+click-to-chat link. In the app it is the **WhatsApp** button on an alert row, on a customer, and
+on a vehicle — the last opens with a customer picker, since there the car is known and the
+person is not.
+
+```bash
+curl -X POST http://localhost:5246/api/v1/messaging/whatsapp/draft \
+  -H "Authorization: Bearer <access token>" -H "Content-Type: application/json" \
+  -d '{"customerPublicId":"<guid>","vehiclePublicId":"<guid>"}'
+```
+
+**Nothing is sent by the platform.** The link opens WhatsApp on the salesperson's own device
+with the message typed in, and they press send. Replies go to their phone, not to the app — so
+there is no inbox and no conversation history yet. Both arrive with the WhatsApp Business API,
+which needs Meta Business verification; see
+[D15](../docs/spec/02-decisions.md#d15--whatsapp-ships-as-a-click-to-chat-link-until-the-business-api-is-approved)
+for why this is the interim shape and what changes when that approval lands. The response says
+which is in force:
+
+| Field | Now | With the Business API |
+| --- | --- | --- |
+| `canSendDirectly` | `false` | `true` |
+| `canReceive` | `false` | `true` |
+| `handoffUrl` | the wa.me link | null |
+
+Screens read those flags rather than assuming, so the button can say "Open WhatsApp" today and
+"Send" later without being rewritten.
+
+**A number that cannot be placed is refused, not guessed.** `+92 300 1234567` needs nothing
+from us. `0300 1234567` is resolved only when the customer's country is set and known — because
+a link built on a guessed country code opens a chat with a real person who is not your
+customer. When it refuses, the drawer says what to fix on the customer record.
+
+Passing `body` sends that text instead of the composed one; the screen does this on every edit
+so the link always matches what is on screen.
+
 ## New-match alerts
 
 When a car is added to the catalogue **after** a customer has said what they are looking for,

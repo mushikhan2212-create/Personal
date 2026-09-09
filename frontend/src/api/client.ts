@@ -1,5 +1,5 @@
 import type {
-  AlertListResponse, AlertScanResult,
+  AlertListResponse, AlertScanResult, MessageDraft,
   CustomerDetail, CustomerImportResult, CustomerInput, CustomerListResponse, CustomerStatus,
   ImportResult, LoginResponse, MySource, RequirementInput, RequirementMatches, SyncResult,
   VehicleDetail, VehicleSearchResponse, VehicleSearchSort, VehicleSourceSummary,
@@ -364,3 +364,20 @@ export const markAllAlertsSeen = (): Promise<{ marked: number }> =>
 /** Runs the scan now rather than waiting for the hourly job. Idempotent. */
 export const scanForAlerts = (): Promise<AlertScanResult> =>
   request<AlertScanResult>('/alerts/scan', { method: 'POST' });
+
+// --- Messaging ----------------------------------------------------------------------------
+
+/**
+ * Prepares a WhatsApp message, optionally about a car.
+ *
+ * Called again on each edit so the link always matches the text on screen. The link is built
+ * server-side rather than in the browser: the phone normalisation that decides whether a number
+ * can be reached at all is one rule, tested in one place.
+ */
+export const draftWhatsApp = (
+  customerPublicId: string, vehiclePublicId?: string, body?: string,
+): Promise<MessageDraft> =>
+  request<MessageDraft>('/messaging/whatsapp/draft', {
+    method: 'POST',
+    body: JSON.stringify({ customerPublicId, vehiclePublicId, body }),
+  });

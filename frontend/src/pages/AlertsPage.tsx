@@ -7,6 +7,8 @@ import {
   listAlerts, markAlertSeen, markAllAlertsSeen, scanForAlerts,
 } from '../api/client';
 import type { RequirementAlertItem } from '../api/types';
+import { WhatsAppDrawer } from '../components/WhatsAppDrawer';
+import { WhatsAppButton } from '../components/WhatsAppButton';
 import { formatMoney, formatUtc } from '../format';
 
 interface Props {
@@ -38,6 +40,7 @@ export function AlertsPage({ canManage, onOpenCustomer, onOpenVehicle, onChanged
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [messaging, setMessaging] = useState<RequirementAlertItem | null>(null);
 
   const load = useCallback(async (nextPage: number, onlyUnseen: boolean): Promise<void> => {
     setLoading(true);
@@ -185,10 +188,24 @@ export function AlertsPage({ canManage, onOpenCustomer, onOpenVehicle, onChanged
                   onOpenCustomer={onOpenCustomer}
                   onOpenVehicle={onOpenVehicle}
                   onClear={() => void clearOne(a)}
+                  onMessage={() => setMessaging(a)}
                 />
               ))}
             </Flex>
           )}
+
+      {/* The point of the screen: a new match is worth knowing about only if telling the
+          customer is the next click. */}
+      <WhatsAppDrawer
+        open={messaging !== null}
+        onClose={() => setMessaging(null)}
+        customerPublicId={messaging?.customer.publicId ?? null}
+        vehiclePublicId={messaging?.vehicle.publicId}
+        customerName={messaging
+          ? [messaging.customer.firstName, messaging.customer.lastName]
+            .filter(Boolean).join(' ') || undefined
+          : undefined}
+      />
 
       {total > PAGE_SIZE && (
         <Flex justify="flex-end">
@@ -205,12 +222,13 @@ export function AlertsPage({ canManage, onOpenCustomer, onOpenVehicle, onChanged
   );
 }
 
-function AlertRow({ alert: a, canManage, onOpenCustomer, onOpenVehicle, onClear }: {
+function AlertRow({ alert: a, canManage, onOpenCustomer, onOpenVehicle, onClear, onMessage }: {
   alert: RequirementAlertItem;
   canManage: boolean;
   onOpenCustomer: (publicId: string) => void;
   onOpenVehicle: (publicId: string) => void;
   onClear: () => void;
+  onMessage: () => void;
 }) {
   const who = [a.customer.firstName, a.customer.lastName].filter(Boolean).join(' ')
     || a.customer.phone
@@ -279,6 +297,8 @@ function AlertRow({ alert: a, canManage, onOpenCustomer, onOpenVehicle, onClear 
             </Typography.Text>
           </Tooltip>
         </Flex>
+
+        {canManage && <WhatsAppButton size="small" onClick={onMessage} />}
 
         {canManage && a.seenAtUtc === null && (
           <Button size="small" onClick={onClear}>Mark seen</Button>

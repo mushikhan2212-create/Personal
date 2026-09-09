@@ -167,7 +167,11 @@ export function App() {
               )}
 
               {view.name === 'vehicle' && (
-                <VehicleDetailPage id={view.id} onBack={() => setView({ name: 'search' })} />
+                <VehicleDetailPage
+                  id={view.id}
+                  onBack={() => setView({ name: 'search' })}
+                  canMessage={session.permissions.includes('customers.manage')}
+                />
               )}
 
               {view.name === 'my-sources' && (

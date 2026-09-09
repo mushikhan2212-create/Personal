@@ -26,6 +26,8 @@ Schema consequences are in [`04-schema-delta.md`](04-schema-delta.md).
 | [D11](#d11--net-10-not-net-8) | .NET 10, not .NET 8 (**amends §4**) | Accepted |
 | [D12](#d12--the-poc-syncs-japanese-exporters-only) | The POC syncs Japanese exporters only (**narrows §3**) | Accepted |
 | [D13](#d13--ingestion-is-source-agnostic-and-the-platform-does-not-scrape) | Ingestion is source-agnostic and the platform does not scrape (**supersedes part of D12**) | Accepted |
+| [D14](#d14--every-account-is-a-tenant-including-a-solo-trader) | Every account is a tenant, including a solo trader | Accepted |
+| [D15](#d15--whatsapp-ships-as-a-click-to-chat-link-until-the-business-api-is-approved) | WhatsApp ships as a click-to-chat link until the Business API is approved | Accepted |
 
 ---
 
@@ -750,3 +752,51 @@ Those two are one piece of work, and this decision only fixes what they hang off
 It also does not add anything now. `Tenant` carries no plan today and needs none until
 subscriptions are built; this decision exists so that the CRM being built in Phase 1 is not
 designed around a tenantless case that will never exist.
+
+## D15 — WhatsApp ships as a click-to-chat link until the Business API is approved
+
+### Problem
+
+Master prompt §10 requires the official WhatsApp Business and Meta APIs. Those need Meta
+Business verification, which is weeks of calendar time and paperwork about the business — none
+of it code. Meanwhile the platform can tell a salesperson that a car matching a customer's
+requirement has arrived (O11) and then offers no way to tell the customer.
+
+The obvious shortcut is to automate a personal WhatsApp account with one of the libraries that
+drive WhatsApp Web. That was considered and rejected: those reverse-engineer the protocol, get
+numbers banned, and §18 excludes "bypassing access controls". The number at risk would be the
+dealer's own — the one their customers already have.
+
+### Decision
+
+Ship WhatsApp's own sanctioned click-to-chat scheme — `https://wa.me/<number>?text=<message>` —
+behind an `IMessagingProvider` abstraction, and replace the provider when verification comes
+through.
+
+The interface does not promise that dispatching sends anything. `MessageDispatch` distinguishes
+**Sent** from **HandoffLink**, and `MessagingCapabilities` says which a provider can do, so the
+screens describe what will actually happen rather than assuming. Modelling only "send" would
+have forced today's provider to lie about what it did, and a screen built on that lie would
+need rewriting rather than reconfiguring.
+
+### Consequences
+
+Outbound only, and that is structural rather than an unfinished edge. The reply lands on the
+salesperson's phone, so the platform never sees it. Three things therefore wait for the
+Business API and are not attempted now:
+
+- the unified inbox §10 asks for — there is nothing to ingest
+- conversation history against the customer record
+- [O7](05-open-items.md#o7--whatsapp-24-hour-messaging-window)'s 24-hour window, which opens on
+  an *inbound* message and so cannot be evaluated at all
+
+The Business API provider therefore **adds** the missing half rather than replacing this one.
+Both can be registered at once: a salesperson with WhatsApp already open on their desk may
+still prefer to send by hand.
+
+Phone numbers are resolved to international form by `PhoneNumber`, which refuses rather than
+guesses a country. A link built on a guessed country code does not fail — it opens a chat with
+a real person who is not the customer.
+
+Nothing sends without a person pressing send, which satisfies §18's exclusion of autonomous
+customer messaging by construction rather than by policy.

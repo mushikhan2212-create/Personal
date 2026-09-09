@@ -1,4 +1,5 @@
 using CarDealer.Application.Abstractions;
+using CarDealer.Application.Messaging;
 using CarDealer.Application.Search;
 using CarDealer.Application.VehicleSources;
 using CarDealer.Infrastructure.Search;
@@ -13,6 +14,7 @@ using CarDealer.Infrastructure.Alerts;
 using CarDealer.Infrastructure.Caching;
 using CarDealer.Infrastructure.Import;
 using CarDealer.Infrastructure.Jobs;
+using CarDealer.Infrastructure.Messaging;
 using CarDealer.Infrastructure.Persistence;
 using CarDealer.Infrastructure.Reporting;
 using CarDealer.Infrastructure.Pricing;
@@ -80,6 +82,11 @@ public static class DependencyInjection
         // every tenant creates those scopes itself, so it is a singleton over the factory.
         services.AddScoped<RequirementAlertScanner>();
         services.AddSingleton<RequirementAlertJob>();
+
+        // Messaging behind its abstraction, the same shape as search and the vehicle sources.
+        // The WhatsApp Business API provider replaces this one line when Meta verification
+        // comes through; nothing above it names a provider.
+        services.AddSingleton<IMessagingProvider, WhatsAppLinkProvider>();
 
         AddVehicleSources(services, configuration);
 
