@@ -191,6 +191,33 @@ public sealed class CustomerMatchingTests : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task An_applied_criterion_is_spelled_the_way_the_trade_writes_it()
+    {
+        // matchedOn is prose composed on the server and rendered verbatim on a chip, so the
+        // browser has nothing left to translate. Interpolating the enum straight puts
+        // "transmission ContinuouslyVariable" - a C# identifier - in front of a salesperson.
+        await SeedCatalogAsync();
+
+        var (client, customer, requirement) = await WithRequirementAsync(new
+        {
+            transmission = "ContinuouslyVariable",
+            fuelType = "PluginHybrid",
+        });
+
+        var matches = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/v1/customers/{customer}/requirements/{requirement}/matches");
+
+        var applied = matches.GetProperty("matchedOn").EnumerateArray()
+            .Select(a => a.GetString()!).ToList();
+
+        Assert.Contains("transmission CVT", applied);
+        Assert.Contains("fuel plug-in hybrid", applied);
+
+        Assert.DoesNotContain(applied, a => a.Contains("ContinuouslyVariable", StringComparison.Ordinal));
+        Assert.DoesNotContain(applied, a => a.Contains("PluginHybrid", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Matching_another_tenants_requirement_is_a_404()
     {
         await SeedCatalogAsync();

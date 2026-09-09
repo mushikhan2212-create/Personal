@@ -13,7 +13,7 @@ import { VehicleCards } from '../components/VehicleCards';
 import { WhatsAppButton } from '../components/WhatsAppButton';
 import { WhatsAppDrawer } from '../components/WhatsAppDrawer';
 import { PlusGlyph, TrashGlyph } from '../components/icons';
-import { formatUtc } from '../format';
+import { formatUtc, specLabel } from '../format';
 
 interface Props {
   publicId: string;
@@ -320,14 +320,16 @@ export function CustomerDetailPage({ publicId, canManage, onBack, onOpenVehicle 
               <Select
                 allowClear
                 placeholder="Any"
-                options={['Petrol', 'Diesel', 'Hybrid', 'Electric'].map((v) => ({ value: v, label: v }))}
+                options={['Petrol', 'Diesel', 'Hybrid', 'Electric']
+                  .map((v) => ({ value: v, label: specLabel(v) }))}
               />
             </Form.Item>
             <Form.Item name="transmission" label="Gearbox" style={{ flex: 1 }}>
               <Select
                 allowClear
                 placeholder="Any"
-                options={['Automatic', 'Manual'].map((v) => ({ value: v, label: v }))}
+                options={['Automatic', 'Manual']
+                  .map((v) => ({ value: v, label: specLabel(v) }))}
               />
             </Form.Item>
           </Flex>
@@ -490,17 +492,63 @@ function RequirementMatchesPanel({
   );
 }
 
-/** A one-line rendering of what the requirement asks for, for the collapsed header. */
+/**
+ * A one-line rendering of what the requirement asks for, under the collapsed header.
+ *
+ * The car itself is named in the heading above this line, so it is repeated here only when the
+ * requirement has been given a name of its own and the heading shows that instead. Otherwise
+ * the panel read "Toyota Corolla" twice, once in bold and once immediately below it in grey.
+ *
+ * Every criterion the requirement can carry appears, because this line is what a salesperson
+ * scans to decide whether the match list below it is the one they meant. Leaving transmission
+ * out made a requirement for a CVT Corolla read identically to one for a manual - two
+ * different requirements, one summary, and no way to tell from the panel which was which.
+ */
 function summarise(r: Requirement): string {
+  const car = [r.make, r.model, r.variant].filter(Boolean).join(' ');
+
   const parts = [
-    [r.make, r.model].filter(Boolean).join(' '),
+    // Only when the heading is showing the requirement's own name rather than the car.
+    r.name ? car : null,
+    r.bodyType,
     r.minYear && r.maxYear ? `${r.minYear}–${r.maxYear}`
       : r.minYear ? `${r.minYear}+`
         : r.maxYear ? `up to ${r.maxYear}` : null,
-    r.maxMileage ? `under ${r.maxMileage.toLocaleString()} km` : null,
-    r.fuelType,
-    r.maxPrice ? `up to ${r.maxPrice.toLocaleString()}` : null,
+    mileage(r.minMileage, r.maxMileage),
+    r.fuelType ? specLabel(r.fuelType) : null,
+    r.transmission ? specLabel(r.transmission) : null,
+    price(r.minPrice, r.maxPrice, r.currencyCode),
+
+    // Colour and destination are recorded on the requirement but never applied to the match -
+    // the server's own `matchedOn` omits the first and marks the second "not filtered". Listing
+    // them here would put a criterion in the summary that the chips directly below it say was
+    // not used, which is worse than leaving them out.
   ].filter(Boolean);
 
   return parts.length > 0 ? parts.join(' · ') : 'anything';
+}
+
+/** A mileage range, however many of its two ends were given. */
+function mileage(min: number | null, max: number | null): string | null {
+  if (min && max) return `${min.toLocaleString()}–${max.toLocaleString()} km`;
+  if (max) return `under ${max.toLocaleString()} km`;
+  if (min) return `over ${min.toLocaleString()} km`;
+
+  return null;
+}
+
+/**
+ * A price range, with its currency.
+ *
+ * The currency is stated rather than assumed: this dealer's customers are in several countries
+ * and a bare "up to 7,000" against a catalogue quoted in yen is a number nobody can act on.
+ */
+function price(min: number | null, max: number | null, currency: string | null): string | null {
+  const unit = currency ? ` ${currency}` : '';
+
+  if (min && max) return `${min.toLocaleString()}–${max.toLocaleString()}${unit}`;
+  if (max) return `up to ${max.toLocaleString()}${unit}`;
+  if (min) return `from ${min.toLocaleString()}${unit}`;
+
+  return null;
 }

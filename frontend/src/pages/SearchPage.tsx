@@ -6,6 +6,7 @@ import {
 import { searchVehicles } from '../api/client';
 import type { VehicleSearchResponse, VehicleSearchSort } from '../api/types';
 import { VehicleCards } from '../components/VehicleCards';
+import { specLabel } from '../format';
 
 interface Props {
   onOpenVehicle: (id: string) => void;
@@ -16,11 +17,15 @@ interface Props {
 
 interface Filters {
   q: string;
+  make?: string;
+  model?: string;
+  bodyType?: string;
   steeringSide?: string;
   fuelType?: string;
   transmission?: string;
   minYear?: number;
   maxYear?: number;
+  minMileage?: number;
   maxMileage?: number;
   minPrice?: number;
   maxPrice?: number;
@@ -54,33 +59,28 @@ const pageSizeFor = (f: Filters): number =>
 
 /** Everything except the free-text box and the sort, which have their own controls. */
 const REFINEMENTS = [
-  'steeringSide', 'fuelType', 'transmission',
-  'minYear', 'maxYear', 'maxMileage', 'minPrice', 'maxPrice',
+  'make', 'model', 'bodyType', 'steeringSide', 'fuelType', 'transmission',
+  'minYear', 'maxYear', 'minMileage', 'maxMileage', 'minPrice', 'maxPrice',
 ] as const;
-
-/** Enum values arrive as API names; a chip should read the way the dropdown did. */
-const VALUE_LABELS: Record<string, string> = {
-  RightHandDrive: 'Right-hand drive',
-  LeftHandDrive: 'Left-hand drive',
-  PluginHybrid: 'Plug-in hybrid',
-  ContinuouslyVariable: 'CVT',
-  DualClutch: 'Dual clutch',
-};
 
 /**
  * How a filter's value reads on its chip.
  *
- * Numbers get thousands separators; enum names get their friendly form where one exists, and
- * otherwise stand as they are - "Petrol" and "Diesel" need no translation, and coercing every
- * value through Number would render them as NaN.
+ * Numbers get thousands separators; enum names go through the shared table, which is also what
+ * the cards below the chips use - so a car filtered to "CVT" is not described as
+ * "ContinuouslyVariable" two inches lower down.
  */
 function chipValue(value: string | number): string {
   if (typeof value === 'number') return value.toLocaleString();
 
-  return VALUE_LABELS[value] ?? value;
+  return specLabel(value);
 }
 
 const LABELS: Record<(typeof REFINEMENTS)[number], string> = {
+  make: 'Make',
+  model: 'Model',
+  bodyType: 'Body',
+  minMileage: 'Min mileage',
   steeringSide: 'Steering',
   fuelType: 'Fuel',
   transmission: 'Transmission',
@@ -296,16 +296,47 @@ export function SearchPage({ onOpenVehicle, onOpenMySources, catalogVersion }: P
         }
       >
         <Form layout="vertical">
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item label="Make">
+                <Input
+                  placeholder="Toyota"
+                  value={filters.make}
+                  onChange={(e) => set('make', e.target.value || undefined)}
+                  onPressEnter={() => { submit(); setDrawerOpen(false); }}
+                />
+              </Form.Item>
+            </Col>
+
+            <Col span={12}>
+              <Form.Item label="Model">
+                <Input
+                  placeholder="Corolla"
+                  value={filters.model}
+                  onChange={(e) => set('model', e.target.value || undefined)}
+                  onPressEnter={() => { submit(); setDrawerOpen(false); }}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item label="Body">
+            <Input
+              placeholder="Sedan"
+              value={filters.bodyType}
+              onChange={(e) => set('bodyType', e.target.value || undefined)}
+              onPressEnter={() => { submit(); setDrawerOpen(false); }}
+            />
+          </Form.Item>
+
           <Form.Item label="Steering">
             <Select
               allowClear
               placeholder="Any"
               value={filters.steeringSide}
               onChange={(v) => set('steeringSide', v)}
-              options={[
-                { value: 'RightHandDrive', label: 'Right-hand drive' },
-                { value: 'LeftHandDrive', label: 'Left-hand drive' },
-              ]}
+              options={['RightHandDrive', 'LeftHandDrive']
+                .map((v) => ({ value: v, label: specLabel(v) }))}
             />
           </Form.Item>
 
@@ -316,7 +347,7 @@ export function SearchPage({ onOpenVehicle, onOpenMySources, catalogVersion }: P
               value={filters.fuelType}
               onChange={(v) => set('fuelType', v)}
               options={['Petrol', 'Diesel', 'Hybrid', 'PluginHybrid', 'Electric']
-                .map((v) => ({ value: v, label: v }))}
+                .map((v) => ({ value: v, label: specLabel(v) }))}
             />
           </Form.Item>
 
@@ -327,7 +358,7 @@ export function SearchPage({ onOpenVehicle, onOpenMySources, catalogVersion }: P
               value={filters.transmission}
               onChange={(v) => set('transmission', v)}
               options={['Manual', 'Automatic', 'ContinuouslyVariable', 'DualClutch']
-                .map((v) => ({ value: v, label: v }))}
+                .map((v) => ({ value: v, label: specLabel(v) }))}
             />
           </Form.Item>
 
@@ -357,15 +388,31 @@ export function SearchPage({ onOpenVehicle, onOpenMySources, catalogVersion }: P
             </Col>
           </Row>
 
-          <Form.Item label="Max mileage (km)">
-            <InputNumber
-              style={{ width: '100%' }}
-              value={filters.maxMileage}
-              onChange={(v) => set('maxMileage', v ?? undefined)}
-              min={0}
-              step={10_000}
-            />
-          </Form.Item>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item label="Min mileage (km)">
+                <InputNumber
+                  style={{ width: '100%' }}
+                  value={filters.minMileage}
+                  onChange={(v) => set('minMileage', v ?? undefined)}
+                  min={0}
+                  step={10_000}
+                />
+              </Form.Item>
+            </Col>
+
+            <Col span={12}>
+              <Form.Item label="Max mileage (km)">
+                <InputNumber
+                  style={{ width: '100%' }}
+                  value={filters.maxMileage}
+                  onChange={(v) => set('maxMileage', v ?? undefined)}
+                  min={0}
+                  step={10_000}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
 
           <Row gutter={12}>
             <Col span={12}>

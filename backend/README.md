@@ -125,6 +125,18 @@ filters and the results and nothing else — the sources panel that used to sit 
 noise on the screen people spend all day on, and it also contradicted the switches by showing
 listing counts for sources the viewer had turned off.
 
+The **Filters** drawer offers make, model, body, steering, fuel, transmission, year range,
+mileage range and price range — which covers every criterion a saved requirement is actually
+matched on. That parity is the point rather than a coincidence: a requirement's match list is
+only checkable if a person can type the same filters by hand and get the same cars back.
+(A requirement's *variant* goes through the free-text box, which is where the matcher sends it
+too. Its colour and destination country are stored but never filtered on — the `matchedOn`
+array in the match response is the server's own account of what it applied, and it says so.)
+
+Make and model are separate from the free-text box because they mean different things:
+"corolla" typed in the search box also matches a variant string that mentions it, which is
+right when browsing and wrong when a customer has asked for a Corolla.
+
 Grants are reconciled on startup from `Permissions.SystemRoleGrants`, so narrowing a system
 role there takes effect on an existing database the next time the API boots. Roles a tenant
 defines itself are never touched by that.

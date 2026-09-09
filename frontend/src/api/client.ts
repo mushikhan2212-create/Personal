@@ -129,8 +129,21 @@ export const login = (email: string, password: string, tenantSlug?: string): Pro
 
 export interface SearchParams {
   q?: string;
+  /**
+   * Make and model as their own filters, separate from `q`.
+   *
+   * They mean different things: "corolla" in free text also matches a variant string that
+   * mentions it, which is right when browsing and wrong when a customer has asked for a
+   * Corolla. A saved requirement filters on these, so the search screen has to be able to
+   * express the same thing — a requirement nobody can reproduce by hand is a requirement
+   * nobody can check.
+   */
+  make?: string;
+  model?: string;
+  bodyType?: string;
   minYear?: number;
   maxYear?: number;
+  minMileage?: number;
   maxMileage?: number;
   steeringSide?: string;
   fuelType?: string;

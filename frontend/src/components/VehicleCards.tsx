@@ -1,17 +1,8 @@
 import { useState } from 'react';
 import { Card, Col, Flex, Row, Skeleton, Tag, Tooltip, Typography } from 'antd';
-import type { PriceType, VehicleSummary } from '../api/types';
+import type { VehicleSummary } from '../api/types';
 import { WhatsAppButton } from './WhatsAppButton';
-import { describeAge, formatMoney, formatUtc } from '../format';
-
-/** Incoterms read as codes in this trade, not as prose. */
-const PRICE_TYPE_LABEL: Record<PriceType, string> = {
-  Unknown: '—',
-  ExWorks: 'EXW',
-  FreeOnBoard: 'FOB',
-  CostAndFreight: 'CFR',
-  CostInsuranceFreight: 'CIF',
-};
+import { describeAge, formatMoney, formatUtc, specLabel, steeringShort } from '../format';
 
 /**
  * How many cards sit across the grid at each width.
@@ -92,9 +83,9 @@ function VehicleCard({ vehicle: v, onOpen, onMessage }: {
   const { label: age, isStale } = describeAge(v.lastSeenAtUtc);
 
   const specs = [
-    v.steeringSide !== 'Unknown' && (v.steeringSide === 'RightHandDrive' ? 'RHD' : 'LHD'),
-    v.fuelType !== 'Unknown' && v.fuelType,
-    v.transmission !== 'Unknown' && v.transmission,
+    steeringShort(v.steeringSide),
+    v.fuelType !== 'Unknown' && specLabel(v.fuelType),
+    v.transmission !== 'Unknown' && specLabel(v.transmission),
   ].filter(Boolean) as string[];
 
   return (
@@ -154,13 +145,13 @@ function VehicleCard({ vehicle: v, onOpen, onMessage }: {
                   title={v.priceType === 'Unknown'
                     ? 'The source did not state an incoterm, so this price is not comparable '
                       + 'with a quoted FOB or CIF price.'
-                    : `Quoted ${PRICE_TYPE_LABEL[v.priceType]}`}
+                    : `Quoted ${specLabel(v.priceType)}`}
                 >
                   <Tag
                     color={v.priceType === 'Unknown' ? 'default' : 'green'}
                     style={{ marginInlineEnd: 0, fontSize: 11, lineHeight: '16px' }}
                   >
-                    {PRICE_TYPE_LABEL[v.priceType]}
+                    {specLabel(v.priceType)}
                   </Tag>
                 </Tooltip>
               </Flex>

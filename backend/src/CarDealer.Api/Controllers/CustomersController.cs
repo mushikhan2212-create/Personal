@@ -508,8 +508,10 @@ public sealed class CustomersController : ControllerBase
         if (r.MaxYear is { } maxY) applied.Add($"year to {maxY}");
         if (r.MinMileage is { } minM) applied.Add($"mileage from {minM:N0}");
         if (r.MaxMileage is { } maxM) applied.Add($"mileage to {maxM:N0}");
-        if (r.Transmission is { } t) applied.Add($"transmission {t}");
-        if (r.FuelType is { } f) applied.Add($"fuel {f}");
+        // Spelled the way the trade does. Interpolated straight, these read "transmission
+        // ContinuouslyVariable" - a C# identifier on a chip a salesperson reads.
+        if (r.Transmission is { } t) applied.Add($"transmission {Spell(t)}");
+        if (r.FuelType is { } f) applied.Add($"fuel {Spell(f)}");
         if (r.MinPrice is { } minP) applied.Add($"price from {minP:N0}");
         if (r.MaxPrice is { } maxP) applied.Add($"price to {maxP:N0}");
 
@@ -522,6 +524,30 @@ public sealed class CustomersController : ControllerBase
 
         return [.. applied];
     }
+
+    /// <summary>
+    /// An enum value as the trade writes it, for text a person reads.
+    /// </summary>
+    /// <remarks>
+    /// Only the members whose name is not already the word. The frontend keeps the same table
+    /// for the values it renders itself; this one exists because <c>matchedOn</c> is prose
+    /// composed here and shown verbatim, so the browser has nothing left to translate.
+    /// </remarks>
+    private static string Spell(Transmission t) => t switch
+    {
+        Transmission.ContinuouslyVariable => "CVT",
+        Transmission.SemiAutomatic => "semi-automatic",
+        Transmission.DualClutch => "dual clutch",
+        _ => t.ToString(),
+    };
+
+    private static string Spell(FuelType f) => f switch
+    {
+        FuelType.PluginHybrid => "plug-in hybrid",
+        FuelType.Lpg => "LPG",
+        FuelType.Cng => "CNG",
+        _ => f.ToString(),
+    };
 
     // -------------------------------------------------------------------------------------
 

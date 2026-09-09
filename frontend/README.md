@@ -82,3 +82,10 @@ price overlay is invisible to the other.
 - `src/api/types.ts` is hand-mirrored from the API's OpenAPI document. Generating it from
   `/swagger/v1/swagger.json` is the intended end state; until then it has to be kept in step
   with the controllers by hand.
+- **Enums reach the browser as names, not numbers** — `"ContinuouslyVariable"`, never `2` — so
+  that renumbering on the server cannot silently change what a filter means. The cost is that
+  the name is a C# identifier, so anything shown to a person goes through `specLabel` in
+  `src/format.ts`, which is the single table of how each value reads ("CVT", "FWD", "FOB").
+  Rendering `vehicle.transmission` directly is the bug that table exists to prevent; adding an
+  enum member on the server and not adding it there shows the raw name, which is ugly but true
+  rather than blank.

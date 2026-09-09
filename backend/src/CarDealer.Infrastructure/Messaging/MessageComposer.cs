@@ -52,8 +52,27 @@ public static class MessageComposer
 
         var specs = new[]
         {
-            vehicle.FuelType == FuelType.Unknown ? null : vehicle.FuelType.ToString(),
-            vehicle.Transmission == Transmission.Unknown ? null : vehicle.Transmission.ToString(),
+            vehicle.FuelType switch
+            {
+                FuelType.Unknown => null,
+                FuelType.PluginHybrid => "Plug-in hybrid",
+                FuelType.Lpg => "LPG",
+                FuelType.Cng => "CNG",
+                var f => f.ToString(),
+            },
+
+            // Spelled the way the trade does. Left as ToString this reads
+            // "ContinuouslyVariable" - a C# identifier, in a message a customer opens on their
+            // phone, which is the one place an enum name must never surface.
+            vehicle.Transmission switch
+            {
+                Transmission.Unknown => null,
+                Transmission.ContinuouslyVariable => "CVT",
+                Transmission.SemiAutomatic => "Semi-automatic",
+                Transmission.DualClutch => "Dual clutch",
+                var t => t.ToString(),
+            },
+
             vehicle.SteeringSide switch
             {
                 SteeringSide.RightHandDrive => "RHD",

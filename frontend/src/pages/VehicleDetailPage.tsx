@@ -7,7 +7,7 @@ import { getVehicle } from '../api/client';
 import { WhatsAppButton } from '../components/WhatsAppButton';
 import { WhatsAppDrawer } from '../components/WhatsAppDrawer';
 import type { CanonicalHashSource, VehicleDetail, VehicleDetailListing } from '../api/types';
-import { STALE_AFTER_DAYS, ageInDays, formatUtc } from '../format';
+import { STALE_AFTER_DAYS, ageInDays, formatUtc, specLabel } from '../format';
 
 interface Props {
   id: string;
@@ -15,14 +15,6 @@ interface Props {
   /** Whether this user may message customers. The button is hidden rather than disabled. */
   canMessage: boolean;
 }
-
-const PRICE_TYPE_LABEL: Record<string, string> = {
-  Unknown: '—',
-  ExWorks: 'EXW',
-  FreeOnBoard: 'FOB',
-  CostAndFreight: 'CFR',
-  CostInsuranceFreight: 'CIF',
-};
 
 /** What deduplication matched this car on, in the words a person would use. */
 const MATCHED_ON: Record<CanonicalHashSource, string> = {
@@ -124,7 +116,7 @@ export function VehicleDetailPage({ id, onBack, canMessage }: Props) {
       key: 'incoterm',
       render: (_: unknown, l: VehicleDetailListing) => (
         <Tag color={l.priceType === 'Unknown' ? 'default' : 'green'} style={{ marginInlineEnd: 0 }}>
-          {PRICE_TYPE_LABEL[l.priceType] ?? l.priceType}
+          {specLabel(l.priceType)}
         </Tag>
       ),
     },
@@ -204,13 +196,13 @@ export function VehicleDetailPage({ id, onBack, canMessage }: Props) {
                   title={best?.priceType === 'Unknown'
                     ? 'The source did not state an incoterm, so this price is not comparable '
                       + 'with a quoted FOB or CIF price.'
-                    : `Quoted ${PRICE_TYPE_LABEL[best?.priceType ?? 'Unknown']}`}
+                    : `Quoted ${specLabel(best?.priceType)}`}
                 >
                   <Tag
                     color={best?.priceType === 'Unknown' ? 'default' : 'green'}
                     style={{ marginInlineEnd: 0 }}
                   >
-                    {PRICE_TYPE_LABEL[best?.priceType ?? 'Unknown']}
+                    {specLabel(best?.priceType)}
                   </Tag>
                 </Tooltip>
 
@@ -236,10 +228,10 @@ export function VehicleDetailPage({ id, onBack, canMessage }: Props) {
                       ? '—'
                       : `${vehicle.mileage.toLocaleString()} ${vehicle.mileageUnit === 'Miles' ? 'mi' : 'km'}`}
                   />
-                  <Spec label="Steering" value={vehicle.steeringSide} />
-                  <Spec label="Fuel" value={vehicle.fuelType} />
-                  <Spec label="Transmission" value={vehicle.transmission} />
-                  <Spec label="Drivetrain" value={vehicle.drivetrain} />
+                  <Spec label="Steering" value={specLabel(vehicle.steeringSide)} />
+                  <Spec label="Fuel" value={specLabel(vehicle.fuelType)} />
+                  <Spec label="Transmission" value={specLabel(vehicle.transmission)} />
+                  <Spec label="Drivetrain" value={specLabel(vehicle.drivetrain)} />
                   <Spec label="Body" value={vehicle.bodyType ?? '—'} />
                   <Spec
                     label="Engine"
