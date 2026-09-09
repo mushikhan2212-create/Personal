@@ -4,10 +4,11 @@ import {
   Input, InputNumber, Pagination, Select, Space, Spin, Tag, Typography,
 } from 'antd';
 import {
-  addRequirement, deleteCustomer, deleteRequirement, getCustomer, getMatches,
+  addCustomerNote, addRequirement, deleteCustomer, deleteCustomerNote, deleteRequirement,
+  editCustomerNote, getCustomer, getMatches,
 } from '../api/client';
 import type {
-  CustomerDetail, Requirement, RequirementInput, RequirementMatches,
+  CustomerDetail, CustomerNote, Requirement, RequirementInput, RequirementMatches,
 } from '../api/types';
 import { VehicleCards } from '../components/VehicleCards';
 import { WhatsAppButton } from '../components/WhatsAppButton';
@@ -207,21 +208,14 @@ export function CustomerDetailPage({ publicId, canManage, onBack, onOpenVehicle 
           </Flex>
         </Flex>
 
-        {customer.notes && (
-          <div
-            style={{
-              marginTop: 18,
-              paddingTop: 16,
-              borderTop: '1px solid var(--app-stroke)',
-            }}
-          >
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>Notes</Typography.Text>
-            <Typography.Paragraph style={{ marginTop: 4, marginBottom: 0 }}>
-              {customer.notes}
-            </Typography.Paragraph>
-          </div>
-        )}
       </Card>
+
+      <NotesCard
+        publicId={publicId}
+        notes={customer.notes}
+        canManage={canManage}
+        onChanged={load}
+      />
 
       <Card
         title={`Looking for (${customer.requirements.length})`}
@@ -551,4 +545,197 @@ function price(min: number | null, max: number | null, currency: string | null):
   if (min) return `from ${min.toLocaleString()}${unit}`;
 
   return null;
+}
+
+/**
+ * The running log of what a person wrote down about this customer.
+ *
+ * A log rather than the single box it replaces, because in this trade the date is half the
+ * content: "7,000 is his ceiling" means one thing said last week and another said in March, and
+ * a customer who claims they were quoted 6,500 in August is answerable only if the record kept
+ * its dates. One overwritten box cannot do that.
+ *
+ * Deliberately not the activity timeline master prompt section 9 also asks for. That is
+ * generated - message sent, requirement added - and answers "what happened". This is typed by a
+ * person and answers "what did they say", which is the half a broker keeps in WhatsApp today.
+ */
+function NotesCard({ publicId, notes, canManage, onChanged }: {
+  publicId: string;
+  notes: CustomerNote[];
+  canManage: boolean;
+  onChanged: () => Promise<void>;
+}) {
+  const { message, modal } = AntApp.useApp();
+
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState('');
+
+  const add = async (): Promise<void> => {
+    const body = draft.trim();
+
+    if (body === '') return;
+
+    setSaving(true);
+
+    try {
+      await addCustomerNote(publicId, body);
+
+      // Cleared only after the write succeeds. Clearing first loses what somebody typed if the
+      // request fails, and a note is usually the only copy of what was just said on the phone.
+      setDraft('');
+      await onChanged();
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : 'Could not save that note.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveEdit = async (noteId: number): Promise<void> => {
+    const body = editDraft.trim();
+
+    if (body === '') return;
+
+    try {
+      await editCustomerNote(publicId, noteId, body);
+      setEditingId(null);
+      await onChanged();
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : 'Could not save that change.');
+    }
+  };
+
+  const remove = (note: CustomerNote): void => {
+    modal.confirm({
+      title: 'Delete this note?',
+      content: 'It cannot be recovered.',
+      okText: 'Delete',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await deleteCustomerNote(publicId, note.id);
+          await onChanged();
+        } catch (e) {
+          message.error(e instanceof Error ? e.message : 'Could not delete that note.');
+        }
+      },
+    });
+  };
+
+  return (
+    <Card title={`Notes (${notes.length})`} styles={{ body: { padding: 16 } }}>
+      <Flex vertical gap={16}>
+        {canManage && (
+          <Flex vertical gap={8}>
+            <Input.TextArea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="What was said? Ctrl+Enter to save."
+              autoSize={{ minRows: 2, maxRows: 8 }}
+              maxLength={4000}
+              // Ctrl+Enter rather than Enter: a note about a phone call runs to several lines,
+              // and a plain Enter that submitted would cut every one of them short.
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  void add();
+                }
+              }}
+            />
+
+            <Flex justify="flex-end">
+              <Button
+                type="primary"
+                icon={<PlusGlyph />}
+                loading={saving}
+                disabled={draft.trim() === ''}
+                onClick={() => void add()}
+              >
+                Add note
+              </Button>
+            </Flex>
+          </Flex>
+        )}
+
+        {notes.length === 0 ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="Nothing written down yet."
+          />
+        ) : (
+          <Flex vertical gap={0}>
+            {notes.map((note, i) => (
+              <div
+                key={note.id}
+                style={{
+                  paddingTop: i === 0 ? 0 : 12,
+                  paddingBottom: 12,
+                  borderTop: i === 0 ? undefined : '1px solid var(--app-stroke)',
+                }}
+              >
+                <Flex justify="space-between" align="flex-start" gap={12}>
+                  <Flex vertical gap={4} style={{ minWidth: 0, flex: 1 }}>
+                    {editingId === note.id ? (
+                      <Flex vertical gap={8}>
+                        <Input.TextArea
+                          value={editDraft}
+                          onChange={(e) => setEditDraft(e.target.value)}
+                          autoSize={{ minRows: 2, maxRows: 10 }}
+                          maxLength={4000}
+                        />
+                        <Flex gap={8} justify="flex-end">
+                          <Button size="small" onClick={() => setEditingId(null)}>Cancel</Button>
+                          <Button
+                            size="small"
+                            type="primary"
+                            onClick={() => void saveEdit(note.id)}
+                          >
+                            Save
+                          </Button>
+                        </Flex>
+                      </Flex>
+                    ) : (
+                      <Typography.Paragraph style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>
+                        {note.body}
+                      </Typography.Paragraph>
+                    )}
+
+                    <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                      {formatUtc(note.createdAtUtc)}
+                      {/* Null means the platform moved this here rather than a person typing
+                          it - the single notes box that preceded the log had no author, and
+                          naming one would put words in somebody's mouth. */}
+                      {note.author ? ` · ${note.author}` : ' · imported'}
+                      {note.editedAtUtc ? ` · edited ${formatUtc(note.editedAtUtc)}` : ''}
+                    </Typography.Text>
+                  </Flex>
+
+                  {canManage && editingId !== note.id && (
+                    <Flex gap={4}>
+                      <Button
+                        size="small"
+                        type="text"
+                        onClick={() => { setEditingId(note.id); setEditDraft(note.body); }}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="small"
+                        type="text"
+                        danger
+                        icon={<TrashGlyph />}
+                        onClick={() => remove(note)}
+                      />
+                    </Flex>
+                  )}
+                </Flex>
+              </div>
+            ))}
+          </Flex>
+        )}
+      </Flex>
+    </Card>
+  );
 }

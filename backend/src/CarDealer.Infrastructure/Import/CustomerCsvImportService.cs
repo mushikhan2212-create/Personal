@@ -32,11 +32,14 @@ public sealed class CustomerCsvImportService
 {
     private readonly CarDealerDbContext _db;
     private readonly ITenantContext _tenant;
+    private readonly IDateTimeProvider _clock;
 
-    public CustomerCsvImportService(CarDealerDbContext db, ITenantContext tenant)
+    public CustomerCsvImportService(
+        CarDealerDbContext db, ITenantContext tenant, IDateTimeProvider clock)
     {
         _db = db;
         _tenant = tenant;
+        _clock = clock;
     }
 
     /// <summary>
@@ -155,6 +158,10 @@ public sealed class CustomerCsvImportService
         var result = new CustomerImportResult { DryRun = dryRun, TotalRows = dataRows.Count };
         var toAdd = new List<Customer>();
 
+        // Held beside the customers rather than on them: a note is its own row now, and
+        // neither exists until the single SaveChanges below.
+        var notes = new List<(Customer Customer, string Body)>();
+
         for (var i = 0; i < dataRows.Count; i++)
         {
             // 1-based and counted in customers, not file lines: a quoted line break inside a
@@ -200,6 +207,12 @@ public sealed class CustomerCsvImportService
             customer.TenantId = _tenant.TenantId;
             customer.PublicId = Guid.NewGuid();
             toAdd.Add(customer);
+
+            if (parsed.Note is { } note)
+            {
+                notes.Add((customer, note));
+            }
+
             result.Created++;
 
             if (result.Sample.Count < 5)
@@ -211,6 +224,21 @@ public sealed class CustomerCsvImportService
         if (!dryRun && toAdd.Count > 0)
         {
             _db.Customers.AddRange(toAdd);
+
+            // By reference, not by id: these customers have not been saved yet, so their ids
+            // are still zero and assigning one would attach every note to nothing.
+            foreach (var (customer, body) in notes)
+            {
+                _db.CustomerNotes.Add(new CustomerNote
+                {
+                    TenantId = _tenant.TenantId,
+                    Customer = customer,
+                    Body = body,
+                    CreatedByUserId = null,
+                    CreatedAtUtc = _clock.UtcNow,
+                });
+            }
+
             await _db.SaveChangesAsync(ct).ConfigureAwait(false);
         }
 
@@ -329,7 +357,6 @@ public sealed class CustomerCsvImportService
             City = Truncate(Get(values, "city"), 128),
             CountryCode = countryCode?.ToUpperInvariant(),
             PreferredLanguage = Truncate(Get(values, "preferredLanguage"), 16),
-            Notes = Truncate(Get(values, "notes"), 4000),
             Status = Get(values, "status") is { } s
                 ? Enum.Parse<CustomerStatus>(s, ignoreCase: true)
                 : CustomerStatus.Lead,
@@ -338,7 +365,7 @@ public sealed class CustomerCsvImportService
                 : LeadSource.Unknown,
         };
 
-        return ParsedRow.Valid(customer, label);
+        return ParsedRow.Valid(customer, label, Truncate(Get(values, "notes"), 4000));
     }
 
     private static string? Get(Dictionary<string, string> values, string key)
@@ -400,9 +427,18 @@ public sealed class CustomerCsvImportService
         return name.Length > 0 ? name : (phone ?? email ?? "(empty row)");
     }
 
-    private sealed record ParsedRow(Customer? Customer, string Label, string? Error)
+    /// <summary>
+    /// One row's customer, plus whatever its notes column held.
+    /// </summary>
+    /// <remarks>
+    /// The note travels beside the customer rather than on it, because notes are their own
+    /// dated log now. A spreadsheet's note has no date of its own, so it becomes the customer's
+    /// first entry, stamped when the import ran - which is the only honest date available.
+    /// </remarks>
+    private sealed record ParsedRow(Customer? Customer, string Label, string? Error, string? Note = null)
     {
-        public static ParsedRow Valid(Customer customer, string label) => new(customer, label, null);
+        public static ParsedRow Valid(Customer customer, string label, string? note) =>
+            new(customer, label, null, note);
 
         public static ParsedRow Invalid(string label, string error) => new(null, label, error);
     }

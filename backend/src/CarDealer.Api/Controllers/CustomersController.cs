@@ -40,13 +40,30 @@ public sealed class CustomersController : ControllerBase
     private readonly CarDealerDbContext _db;
     private readonly ITenantContext _tenant;
     private readonly ISearchProvider _search;
+    private readonly ICurrentUser _currentUser;
+    private readonly IDateTimeProvider _clock;
+
+    /// <summary>
+    /// The longest a single note may be.
+    /// </summary>
+    /// <remarks>
+    /// Matches the column. Enforced here as well so a long paste comes back as a readable
+    /// refusal rather than as a truncation nobody notices or a database error nobody can read.
+    /// </remarks>
+    private const int MaxNoteLength = 4000;
 
     public CustomersController(
-        CarDealerDbContext db, ITenantContext tenant, ISearchProvider search)
+        CarDealerDbContext db,
+        ITenantContext tenant,
+        ISearchProvider search,
+        ICurrentUser currentUser,
+        IDateTimeProvider clock)
     {
         _db = db;
         _tenant = tenant;
         _search = search;
+        _currentUser = currentUser;
+        _clock = clock;
     }
 
     // -------------------------------------------------------------------------------------
@@ -132,13 +149,30 @@ public sealed class CustomersController : ControllerBase
                 c.PreferredLanguage,
                 Status = c.Status.ToString(),
                 LeadSource = c.LeadSource.ToString(),
-                c.Notes,
                 c.AssignedUserId,
                 c.CreatedAtUtc,
                 c.UpdatedAtUtc,
                 Requirements = c.Requirements
                     .OrderByDescending(r => r.UpdatedAtUtc)
                     .Select(r => Describe(r))
+                    .ToList(),
+
+                // Newest first: the last thing said is the thing being acted on. The old
+                // single Notes column is gone from this response deliberately - the migration
+                // moved its contents here, and returning both would put the same text on the
+                // screen twice under two headings.
+                Notes = _db.CustomerNotes
+                    .Where(n => n.CustomerId == c.Id)
+                    .OrderByDescending(n => n.CreatedAtUtc)
+                    .ThenByDescending(n => n.Id)
+                    .Select(n => new
+                    {
+                        n.Id,
+                        n.Body,
+                        n.CreatedAtUtc,
+                        n.EditedAtUtc,
+                        Author = n.CreatedByUser == null ? null : n.CreatedByUser.Email,
+                    })
                     .ToList(),
             })
             .FirstOrDefaultAsync(ct)
@@ -176,6 +210,22 @@ public sealed class CustomersController : ControllerBase
         Apply(customer, request);
 
         _db.Customers.Add(customer);
+
+        // A note typed on the add form starts the log rather than filling the column it used
+        // to. "Referred by his brother, pays cash" is the first thing anybody knows about a
+        // customer, and it belongs in the same list as everything learned afterwards.
+        if (Blank(request.Notes) is { } firstNote)
+        {
+            _db.CustomerNotes.Add(new CustomerNote
+            {
+                TenantId = customer.TenantId,
+                Customer = customer,
+                Body = firstNote.Length > MaxNoteLength ? firstNote[..MaxNoteLength] : firstNote,
+                CreatedByUserId = _currentUser.UserId,
+                CreatedAtUtc = _clock.UtcNow,
+            });
+        }
+
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);
 
         return Created($"/api/v1/customers/{customer.PublicId}", new { customer.PublicId });
@@ -394,6 +444,138 @@ public sealed class CustomersController : ControllerBase
         return Ok(new { deleted = requirementId });
     }
 
+    // -------------------------------------------------------------------------------------
+    // Notes
+    // -------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Adds a note to a customer's log.
+    /// </summary>
+    /// <remarks>
+    /// The date is the platform's, not the caller's. A note whose timestamp can be supplied is
+    /// a note that can be back-dated, and the reason this is a log rather than a text box is
+    /// that the dates can be relied on.
+    /// </remarks>
+    [HttpPost("{publicId:guid}/notes")]
+    [HasPermission(Permissions.CustomersManage)]
+    [ProducesResponseType(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> AddNote(
+        Guid publicId, [FromBody] NoteRequest request, CancellationToken ct)
+    {
+        var body = Blank(request.Body);
+
+        if (body is null)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "A note needs something in it.",
+                Status = StatusCodes.Status400BadRequest,
+            });
+        }
+
+        if (body.Length > MaxNoteLength)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = $"A note can be at most {MaxNoteLength:N0} characters.",
+                Detail = $"This one is {body.Length:N0}.",
+                Status = StatusCodes.Status400BadRequest,
+            });
+        }
+
+        // Through the filtered set, so writing a note against another tenant's customer is a
+        // 404 rather than a write.
+        var customer = await _db.Customers
+            .Where(c => c.PublicId == publicId)
+            .Select(c => new { c.Id, c.TenantId })
+            .FirstOrDefaultAsync(ct)
+            .ConfigureAwait(false);
+
+        if (customer is null)
+        {
+            return CustomerNotFound(publicId);
+        }
+
+        var note = new CustomerNote
+        {
+            TenantId = customer.TenantId,
+            CustomerId = customer.Id,
+            Body = body,
+            CreatedByUserId = _currentUser.UserId,
+            CreatedAtUtc = _clock.UtcNow,
+        };
+
+        _db.CustomerNotes.Add(note);
+        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+        return StatusCode(StatusCodes.Status201Created, new { note.Id });
+    }
+
+    /// <summary>
+    /// Corrects a note's text, keeping the date it was written.
+    /// </summary>
+    /// <remarks>
+    /// <c>CreatedAtUtc</c> is never touched, and <c>EditedAtUtc</c> is stamped so the screen can
+    /// say a note was changed after the fact. A log whose entries can be silently rewritten is
+    /// worth no more than the box it replaced.
+    /// </remarks>
+    [HttpPut("{publicId:guid}/notes/{noteId:long}")]
+    [HasPermission(Permissions.CustomersManage)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> EditNote(
+        Guid publicId, long noteId, [FromBody] NoteRequest request, CancellationToken ct)
+    {
+        var body = Blank(request.Body);
+
+        if (body is null || body.Length > MaxNoteLength)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = body is null
+                    ? "A note needs something in it."
+                    : $"A note can be at most {MaxNoteLength:N0} characters.",
+                Status = StatusCodes.Status400BadRequest,
+            });
+        }
+
+        var note = await FindNoteAsync(publicId, noteId, ct).ConfigureAwait(false);
+
+        if (note is null)
+        {
+            return NoteNotFound(noteId);
+        }
+
+        note.Body = body;
+        note.EditedAtUtc = _clock.UtcNow;
+
+        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+        return Ok(new { note.Id });
+    }
+
+    [HttpDelete("{publicId:guid}/notes/{noteId:long}")]
+    [HasPermission(Permissions.CustomersManage)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DeleteNote(Guid publicId, long noteId, CancellationToken ct)
+    {
+        var note = await FindNoteAsync(publicId, noteId, ct).ConfigureAwait(false);
+
+        if (note is null)
+        {
+            return NoteNotFound(noteId);
+        }
+
+        _db.CustomerNotes.Remove(note);
+        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+        return Ok(new { deleted = noteId });
+    }
+
     /// <summary>
     /// The stock that fits this requirement.
     /// </summary>
@@ -528,6 +710,20 @@ public sealed class CustomersController : ControllerBase
 
     // -------------------------------------------------------------------------------------
 
+    /// <summary>
+    /// A note, reached through its customer so the tenant filter applies to both.
+    /// </summary>
+    private Task<CustomerNote?> FindNoteAsync(Guid publicId, long noteId, CancellationToken ct)
+        => _db.CustomerNotes
+            .Where(n => n.Id == noteId && n.Customer.PublicId == publicId)
+            .FirstOrDefaultAsync(ct);
+
+    private NotFoundObjectResult NoteNotFound(long noteId) => NotFound(new ProblemDetails
+    {
+        Title = $"No note with id {noteId} on this customer.",
+        Status = StatusCodes.Status404NotFound,
+    });
+
     private Task<CustomerRequirement?> FindRequirementAsync(
         Guid publicId, long requirementId, CancellationToken ct)
         => _db.CustomerRequirements
@@ -543,8 +739,12 @@ public sealed class CustomersController : ControllerBase
         customer.CountryCode = Blank(request.CountryCode)?.ToUpperInvariant();
         customer.City = Blank(request.City);
         customer.PreferredLanguage = Blank(request.PreferredLanguage);
-        customer.Notes = Blank(request.Notes);
         customer.AssignedUserId = request.AssignedUserId;
+
+        // Customers.Notes is deliberately not written here any more. Notes moved to their own
+        // dated log, the migration copied what the column held into it, and a create or update
+        // that kept writing the column would put text somewhere no screen reads. A note
+        // supplied on create is written to the log instead - see Create.
 
         if (request.Status is { } status) customer.Status = status;
         if (request.LeadSource is { } source) customer.LeadSource = source;
@@ -614,6 +814,17 @@ public sealed class CustomersController : ControllerBase
         Title = $"No requirement with id {id} for this customer.",
         Status = StatusCodes.Status404NotFound,
     });
+}
+
+/// <summary>One entry in a customer's note log.</summary>
+/// <remarks>
+/// Body only. The date and the author are the platform's to set - a note whose timestamp the
+/// caller supplies can be back-dated, and dates that can be relied on are the whole reason this
+/// is a log rather than a text box.
+/// </remarks>
+public sealed record NoteRequest
+{
+    public required string Body { get; init; }
 }
 
 /// <summary>Fields a customer can be created or updated with (master prompt section 9).</summary>

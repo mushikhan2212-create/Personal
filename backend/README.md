@@ -497,6 +497,46 @@ every tenant, and the person who notices is usually not the one who made it. The
 vehicle is archived rather than deleted, which is what makes the reversal possible. Anything the
 survivor gained *after* the merge stays where it is.
 
+## Notes on a customer
+
+Each note is its own dated entry, newest first, with whoever wrote it. `POST`, `PUT` and
+`DELETE` live under `/api/v1/customers/{publicId}/notes` and need `customers.manage`;
+`customers.read` sees them.
+
+A log rather than the single free-text box this replaces, because in this trade the date is half
+the content. "7,000 is his ceiling" means one thing said last week and another said in March,
+and a customer who says they were quoted 6,500 in August is answerable only if the record kept
+its dates. One box cannot do that — either the old text is destroyed or it grows into a wall
+nobody reads.
+
+Three rules make the dates worth trusting:
+
+- **The caller cannot set the date.** `NoteRequest` carries the body and nothing else. A note
+  whose timestamp comes from the request is a note that can be back-dated.
+- **Editing keeps `createdAtUtc` and stamps `editedAtUtc`.** The screen says "edited", because a
+  note rewritten afterwards is weaker evidence than one written on the day.
+- **A note too long for the column is refused, not truncated.** Silently cutting the end off an
+  account of what a customer agreed to is worse than refusing it.
+
+This is deliberately **not** the activity timeline master prompt §9 also asks for. A timeline is
+generated — message sent, requirement added, alert raised — and answers "what happened". This is
+typed by a person and answers "what did they say". Building the timeline first would have buried
+the notes somebody actually wrote inside a stream of events the system wrote.
+
+### What happened to the old notes field
+
+`Customers.Notes` was a single box. The `AddCustomerNotes` migration copies whatever it held
+into the log as each customer's first entry, dated to when the customer was created — the only
+honest date available, since the column recorded no time of its own — and authored by nobody, so
+the screen says "imported" rather than naming a user who never typed it.
+
+The column is left in place and left populated on purpose: dropping it in the same migration
+that copies it would destroy the original before anyone could check the copy. Nothing writes to
+it any more. A later migration can drop it once this has been verified against real data.
+
+A note supplied when creating a customer, or in a CSV import's `notes` column, now starts the
+log instead of filling that column.
+
 ## Importing customers from a spreadsheet
 
 `POST /api/v1/customers/import` takes a CSV as multipart form data and needs `customers.manage`.
@@ -523,7 +563,7 @@ punctuation, so `First Name`, `first_name` and `FIRSTNAME` are one column:
 | Status | status — one of Unknown, Lead, Active, Customer, Dormant, Closed |
 | Source | source, lead source, came from |
 | Language | language, preferred language |
-| Notes | notes, note, comment, comments, remarks |
+| Notes | notes, note, comment, comments, remarks — becomes the customer's first note |
 
 Anything else is ignored rather than rejected. Quoted fields may contain commas and line
 breaks, semicolon-delimited exports are detected, and the byte order mark Excel writes is

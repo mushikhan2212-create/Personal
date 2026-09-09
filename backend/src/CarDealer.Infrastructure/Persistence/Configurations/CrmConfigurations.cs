@@ -57,6 +57,48 @@ public class CustomerConfiguration : IEntityTypeConfiguration<Customer>
     }
 }
 
+/// <summary>
+/// The running note log against a customer.
+/// </summary>
+public class CustomerNoteConfiguration : IEntityTypeConfiguration<CustomerNote>
+{
+    public void Configure(EntityTypeBuilder<CustomerNote> builder)
+    {
+        builder.ToTable("CustomerNotes");
+
+        builder.HasKey(n => n.Id);
+
+        // Long enough for a real account of a phone call, bounded so one paste cannot turn a
+        // customer row into a document.
+        builder.Property(n => n.Body).HasMaxLength(4000).IsRequired();
+        builder.Property(n => n.CreatedAtUtc).HasPrecision(3).IsRequired();
+        builder.Property(n => n.EditedAtUtc).HasPrecision(3);
+
+        builder.HasOne(n => n.Tenant)
+            .WithMany()
+            .HasForeignKey(n => n.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Deleting a customer takes their notes. Erasure has to reach everything derived from
+        // the person (O3), and a note is the most personal thing here after the phone number.
+        builder.HasOne(n => n.Customer)
+            .WithMany()
+            .HasForeignKey(n => n.CustomerId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Restrict: a salesperson leaving must not delete what they recorded. The note stays
+        // and keeps their name on it.
+        builder.HasOne(n => n.CreatedByUser)
+            .WithMany()
+            .HasForeignKey(n => n.CreatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // The only query this table serves: one customer's notes, newest first.
+        builder.HasIndex(n => new { n.CustomerId, n.CreatedAtUtc })
+            .IsDescending(false, true);
+    }
+}
+
 public class CustomerRequirementConfiguration : IEntityTypeConfiguration<CustomerRequirement>
 {
     public void Configure(EntityTypeBuilder<CustomerRequirement> builder)

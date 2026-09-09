@@ -459,3 +459,23 @@ export const scanForDuplicates = (): Promise<{
   candidatesRaised: number;
   groupsSkipped: number;
 }> => request('/duplicates/scan', { method: 'POST' });
+
+// --- Customer notes ---------------------------------------------------------------------
+
+/** Adds a note. The date and author are the server's — see NoteRequest. */
+export const addCustomerNote = (publicId: string, body: string): Promise<{ id: number }> =>
+  request(`/customers/${publicId}/notes`, {
+    method: 'POST',
+    body: JSON.stringify({ body }),
+  });
+
+export const editCustomerNote = (
+  publicId: string, noteId: number, body: string,
+): Promise<{ id: number }> =>
+  request(`/customers/${publicId}/notes/${noteId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ body }),
+  });
+
+export const deleteCustomerNote = (publicId: string, noteId: number): Promise<unknown> =>
+  request(`/customers/${publicId}/notes/${noteId}`, { method: 'DELETE' });

@@ -277,8 +277,11 @@ export function CustomersPage({ canManage, onOpenCustomer }: Props) {
             </Form.Item>
           </Flex>
 
-          <Form.Item name="notes" label="Notes">
-            <Input.TextArea rows={3} />
+          {/* Becomes the first entry in the customer's note log rather than a field on the
+              record — so "referred by his brother, pays cash" sits in the same list as
+              everything learned afterwards. */}
+          <Form.Item name="notes" label="First note" tooltip="Optional. Anything you already know.">
+            <Input.TextArea rows={3} placeholder="How you know them, what they're after…" />
           </Form.Item>
 
           {/* The API requires one of four. Said here so the 400 is never a surprise. */}

@@ -250,7 +250,13 @@ export interface CustomerDetail {
   preferredLanguage: string | null;
   status: CustomerStatus;
   leadSource: LeadSource;
-  notes: string | null;
+  /**
+   * The note log, newest first.
+   *
+   * Replaces the single free-text box this used to be — see the entity remarks. What that box
+   * held was moved into the log by a migration, so nothing was lost.
+   */
+  notes: CustomerNote[];
   assignedUserId: number | null;
   createdAtUtc: string;
   updatedAtUtc: string;
@@ -269,6 +275,16 @@ export interface CustomerInput {
   status?: CustomerStatus;
   leadSource?: LeadSource;
   notes?: string;
+}
+
+export interface CustomerNote {
+  id: number;
+  body: string;
+  createdAtUtc: string;
+  /** Set when somebody changed the text afterwards, which is weaker evidence than the original. */
+  editedAtUtc: string | null;
+  /** Null for a note the platform moved here rather than a person typing it. */
+  author: string | null;
 }
 
 export interface RequirementInput {

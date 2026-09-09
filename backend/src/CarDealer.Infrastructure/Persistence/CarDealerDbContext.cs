@@ -66,6 +66,8 @@ public class CarDealerDbContext : DbContext
 
     public DbSet<CustomerRequirement> CustomerRequirements => Set<CustomerRequirement>();
 
+    public DbSet<CustomerNote> CustomerNotes => Set<CustomerNote>();
+
     public DbSet<RequirementAlert> RequirementAlerts => Set<RequirementAlert>();
 
     public DbSet<Make> Makes => Set<Make>();
@@ -170,6 +172,9 @@ public class CarDealerDbContext : DbContext
             .HasQueryFilter(e => e.TenantId == _tenantContext.TenantIdOrZero);
 
         modelBuilder.Entity<CustomerRequirement>()
+            .HasQueryFilter(e => e.TenantId == _tenantContext.TenantIdOrZero);
+
+        modelBuilder.Entity<CustomerNote>()
             .HasQueryFilter(e => e.TenantId == _tenantContext.TenantIdOrZero);
 
         // An alert names a customer's requirement, so it is as private as the customer is.

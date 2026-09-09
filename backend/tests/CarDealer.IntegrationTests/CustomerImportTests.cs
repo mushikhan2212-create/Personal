@@ -172,9 +172,15 @@ public sealed class CustomerImportTests : IClassFixture<ApiFactory>
         var after = await client.GetFromJsonAsync<JsonElement>($"/api/v1/customers/{publicId}");
 
         Assert.Equal($"{m}Existing", after.GetProperty("firstName").GetString());
+
+        // The note log is untouched: the hand-written entry is still there, and the
+        // spreadsheet's note was not appended either. A skipped row writes nothing at all.
+        var notes = after.GetProperty("notes").EnumerateArray().ToList();
+
+        Assert.Single(notes);
         Assert.Equal(
             "Hand-written note that must survive an import.",
-            after.GetProperty("notes").GetString());
+            notes[0].GetProperty("body").GetString());
     }
 
     [Fact]
@@ -211,7 +217,15 @@ public sealed class CustomerImportTests : IClassFixture<ApiFactory>
         var detail = await client.GetFromJsonAsync<JsonElement>($"/api/v1/customers/{publicId}");
 
         Assert.Equal("Karachi, Sindh", detail.GetProperty("city").GetString());
-        Assert.Equal("line one\nline two", detail.GetProperty("notes").GetString());
+
+        // The quoted line break survives into the note log, newline and all.
+        var notes = detail.GetProperty("notes").EnumerateArray().ToList();
+
+        Assert.Single(notes);
+        Assert.Equal("line one\nline two", notes[0].GetProperty("body").GetString());
+
+        // Imported rather than typed, so no author is invented for it.
+        Assert.Equal(JsonValueKind.Null, notes[0].GetProperty("author").ValueKind);
     }
 
     [Fact]
