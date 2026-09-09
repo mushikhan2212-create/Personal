@@ -342,6 +342,40 @@ Master prompt §18 forbids unlimited ingestion without filters. Put an allow-lis
 An absent or empty list means no restriction on that dimension — never "allow nothing".
 Excluded records are counted and returned as `skippedOutOfScope` rather than dropped silently.
 
+## New-match alerts
+
+When a car is added to the catalogue **after** a customer has said what they are looking for,
+an alert appears in the **New matches** screen and on the bell in the header. This is open item
+[O11](../docs/spec/05-open-items.md#o11--saved-search-alerting): stock in this trade moves fast
+and the dealer who calls first usually gets the sale.
+
+A background job scans hourly. To check immediately — after an import, say — use the **Check
+now** button, or:
+
+```bash
+curl -X POST http://localhost:5246/api/v1/alerts/scan \
+  -H "Authorization: Bearer <access token>"
+```
+
+Two rules make the inbox worth reading, and both are load-bearing:
+
+**An alert is about new stock, not about the catalogue.** A requirement written today against a
+hundred cars typically matches dozens of them, and alerting on those would produce forty
+notifications about cars already on the requirement's own matches list. So an alert is raised
+only where the listing was first seen *after* the requirement was created.
+
+**Scanning twice does not alert twice.** A unique index on (requirement, vehicle) means an
+alert exists once, ever. Running the scan by hand while the hourly job is also running costs a
+query, not a duplicate inbox.
+
+Only requirements with status `Open` are scanned — telling somebody about stock for a customer
+who has already bought is how an inbox stops being read. Alerts deliberately ignore per-user
+muted sources: a mute is a browsing preference, and letting one salesperson's preference
+suppress a colleague's alert would lose a sale for a reason nobody could see afterwards.
+
+`customers.read` sees alerts; `customers.manage` is needed to mark them seen or to trigger a
+scan, because in a shared inbox clearing an alert tells colleagues it has been dealt with.
+
 ## Importing customers from a spreadsheet
 
 `POST /api/v1/customers/import` takes a CSV as multipart form data and needs `customers.manage`.

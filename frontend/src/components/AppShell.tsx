@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
 import {
-  Avatar, Button, Dropdown, Flex, Layout, Menu, Tag, Tooltip, Typography,
+  Avatar, Badge, Button, Dropdown, Flex, Layout, Menu, Tag, Tooltip, Typography,
 } from 'antd';
 import type { Session } from '../App';
 
 /** The screens the sidebar can reach. Kept as a union so a typo is a build error. */
-export type NavKey = 'search' | 'customers' | 'my-sources' | 'import';
+export type NavKey = 'search' | 'customers' | 'alerts' | 'my-sources' | 'import';
 
 interface Props {
   session: Session;
@@ -14,6 +14,8 @@ interface Props {
   onSignOut: () => void;
   mode: 'light' | 'dark';
   onToggleMode: () => void;
+  /** Alerts nobody has looked at. Drives the bell and the sidebar badge. */
+  unseenAlerts: number;
   collapsed: boolean;
   onToggleCollapsed: () => void;
   children: ReactNode;
@@ -36,15 +38,31 @@ const COLLAPSED_WIDTH = 72;
  * by someone who has not memorised five glyphs.
  */
 export function AppShell({
-  session, active, onNavigate, onSignOut, mode, onToggleMode, collapsed, onToggleCollapsed,
-  children,
+  session, active, onNavigate, onSignOut, mode, onToggleMode, unseenAlerts, collapsed,
+  onToggleCollapsed, children,
 }: Props) {
   const canSync = session.permissions.includes('vehicles.sync');
   const canSeeCustomers = session.permissions.includes('customers.read');
 
   const items = [
     { key: 'search', icon: <SearchGlyph />, label: 'Vehicles' },
-    ...(canSeeCustomers ? [{ key: 'customers', icon: <PeopleGlyph />, label: 'Customers' }] : []),
+    ...(canSeeCustomers
+      ? [
+          { key: 'customers', icon: <PeopleGlyph />, label: 'Customers' },
+          {
+            key: 'alerts',
+            icon: <BellGlyph />,
+            // Counted in the rail as well as on the bell: someone working in Customers all day
+            // never looks at the header, and an alert nobody sees is not an alert.
+            label: (
+              <Flex align="center" justify="space-between" gap={8}>
+                <span>New matches</span>
+                {unseenAlerts > 0 && <Badge count={unseenAlerts} color="#3C50E0" size="small" />}
+              </Flex>
+            ),
+          },
+        ]
+      : []),
     { key: 'my-sources', icon: <SourcesGlyph />, label: 'My sources' },
     ...(canSync ? [{ key: 'import', icon: <ImportGlyph />, label: 'Import' }] : []),
   ];
@@ -149,6 +167,23 @@ export function AppShell({
           </Flex>
 
           <Flex align="center" gap={12}>
+            {canSeeCustomers && (
+              <Tooltip
+                title={unseenAlerts === 0
+                  ? 'No new matches'
+                  : `${unseenAlerts} new match${unseenAlerts === 1 ? '' : 'es'}`}
+              >
+                <Badge count={unseenAlerts} size="small" offset={[-2, 4]}>
+                  <Button
+                    type="text"
+                    aria-label={`New matches${unseenAlerts > 0 ? `, ${unseenAlerts} unseen` : ''}`}
+                    onClick={() => onNavigate('alerts')}
+                    icon={<BellGlyph />}
+                  />
+                </Badge>
+              </Tooltip>
+            )}
+
             <Tooltip title={mode === 'dark' ? 'Switch to light' : 'Switch to dark'}>
               <Button
                 type="text"
@@ -240,6 +275,15 @@ function PeopleGlyph({ className }: GlyphProps) {
       <circle {...stroke} cx="9" cy="8" r="3.2" />
       <path {...stroke} d="M3.5 19.5a5.5 5.5 0 0111 0" />
       <path {...stroke} d="M16 5.5a3.2 3.2 0 010 5.6M17.5 14.2a5.5 5.5 0 013 5.3" />
+    </svg>
+  );
+}
+
+function BellGlyph({ className }: GlyphProps) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" className={className}>
+      <path {...stroke} d="M18 8a6 6 0 10-12 0c0 6-2 7-2 7h16s-2-1-2-7z" />
+      <path {...stroke} d="M13.7 20a2 2 0 01-3.4 0" />
     </svg>
   );
 }

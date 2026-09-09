@@ -79,6 +79,21 @@ public sealed record VehicleSearchQuery
     /// </summary>
     public long? VehicleSourceId { get; init; }
 
+    /// <summary>
+    /// Only cars whose listing first appeared after this moment.
+    /// </summary>
+    /// <remarks>
+    /// What separates an alert from a search. Requirement alerting asks "what has arrived since
+    /// the customer told us what they wanted", and without this it would instead ask "what fits"
+    /// - raising an alert for every car already in the catalogue the day a requirement is
+    /// written.
+    ///
+    /// Compared against the listing's first sighting rather than the vehicle's row, because a
+    /// car already in the catalogue that a second exporter starts offering is new stock from
+    /// that exporter and worth knowing about.
+    /// </remarks>
+    public DateTime? ListedAfterUtc { get; init; }
+
     public int Page { get; init; } = 1;
 
     public int PageSize { get; init; } = 24;

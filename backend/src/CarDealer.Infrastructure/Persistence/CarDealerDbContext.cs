@@ -66,6 +66,8 @@ public class CarDealerDbContext : DbContext
 
     public DbSet<CustomerRequirement> CustomerRequirements => Set<CustomerRequirement>();
 
+    public DbSet<RequirementAlert> RequirementAlerts => Set<RequirementAlert>();
+
     public DbSet<Make> Makes => Set<Make>();
 
     public DbSet<Model> Models => Set<Model>();
@@ -168,6 +170,10 @@ public class CarDealerDbContext : DbContext
             .HasQueryFilter(e => e.TenantId == _tenantContext.TenantIdOrZero);
 
         modelBuilder.Entity<CustomerRequirement>()
+            .HasQueryFilter(e => e.TenantId == _tenantContext.TenantIdOrZero);
+
+        // An alert names a customer's requirement, so it is as private as the customer is.
+        modelBuilder.Entity<RequirementAlert>()
             .HasQueryFilter(e => e.TenantId == _tenantContext.TenantIdOrZero);
 
         // UserVehicleSourcePreference is deliberately absent from this list. It is keyed by

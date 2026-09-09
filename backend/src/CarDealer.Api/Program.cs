@@ -11,6 +11,7 @@ using CarDealer.Application.Abstractions;
 using CarDealer.Infrastructure;
 using CarDealer.Infrastructure.Auth;
 using CarDealer.Infrastructure.Persistence;
+using CarDealer.Infrastructure.Alerts;
 using Hangfire;
 using Hangfire.SqlServer;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -294,7 +295,34 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 
 await ApplyStartupTasksAsync(app).ConfigureAwait(false);
 
+ScheduleRecurringJobs(app);
+
 await app.RunAsync().ConfigureAwait(false);
+
+/// <summary>
+/// Registers the recurring background work.
+/// </summary>
+/// <remarks>
+/// Through <see cref="IRecurringJobManager"/> rather than the static <c>RecurringJob</c>
+/// facade. The static one reads <c>JobStorage.Current</c>, a global set during Hangfire's own
+/// bootstrap - which means it throws in any host that has not completed that bootstrap, and the
+/// integration test host is exactly such a host. Resolving the manager uses the storage this
+/// application registered, whatever host it is running in.
+/// </remarks>
+static void ScheduleRecurringJobs(WebApplication app)
+{
+    var jobs = app.Services.GetRequiredService<IRecurringJobManager>();
+
+    // Requirement alerting (open item O11). Hourly rather than on every sync: a sync writes
+    // thousands of listings one at a time, and scanning per listing would run the whole
+    // requirement set thousands of times to raise the same handful of alerts. The scan is
+    // idempotent, so the schedule decides only how quickly an alert appears - never whether it
+    // is correct, nor how many there are.
+    jobs.AddOrUpdate<RequirementAlertJob>(
+        "requirement-alerts",
+        job => job.RunAsync(CancellationToken.None),
+        Cron.Hourly());
+}
 
 static async Task ApplyStartupTasksAsync(WebApplication app)
 {

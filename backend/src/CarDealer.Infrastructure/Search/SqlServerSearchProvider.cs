@@ -114,6 +114,13 @@ public sealed class SqlServerSearchProvider : ISearchProvider
             listings = listings.Where(l => l.VehicleSourceId == sourceId);
         }
 
+        // Requirement alerting's "what has arrived since the customer asked". On the listing's
+        // first sighting, so a car an additional exporter starts offering counts as new.
+        if (query.ListedAfterUtc is { } listedAfter)
+        {
+            listings = listings.Where(l => l.FirstSeenAtUtc > listedAfter);
+        }
+
         // Sources this person has switched off for themselves.
         //
         // Applied to listings rather than to vehicles, which is what makes a car offered by

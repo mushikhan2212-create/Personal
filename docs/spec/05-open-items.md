@@ -185,8 +185,15 @@ In this trade that is the highest-value CRM feature — stock moves fast and the
 respond usually wins the sale. It is a small addition on top of the §12 recommendation pipeline,
 which already computes exactly this match.
 
-Flagged as a product scope gap, not a defect. Worth considering for Phase 2 alongside the AI
-recommendation work.
+**Closed in Phase 1.** Built as `RequirementAlerts` with an hourly scan over the existing
+`ISearchProvider`, an inbox screen and a header bell. Two rules were what the feature turned
+out to need, and both are covered by tests that fail without them: an alert is raised only for
+a listing first seen *after* the requirement was written (otherwise a new requirement fires an
+alert per matching car — 46 of them against the real catalogue), and a unique index on
+(requirement, vehicle) makes re-scanning a no-op.
+
+The AI scoring in master prompt §12 remains Phase 2 and stays separate: `VehicleRecommendations`
+was deliberately left empty rather than filled with these deterministic matches.
 
 ## O12 — Environments, backup and DR
 

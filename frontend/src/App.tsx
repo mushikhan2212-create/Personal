@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { App as AntApp, ConfigProvider, message } from 'antd';
+import { AlertsPage } from './pages/AlertsPage';
 import { AppShell } from './components/AppShell';
 import type { NavKey } from './components/AppShell';
 import { CustomerDetailPage } from './pages/CustomerDetailPage';
@@ -10,7 +11,7 @@ import { MySourcesPage } from './pages/MySourcesPage';
 import { SearchPage } from './pages/SearchPage';
 import { VehicleDetailPage } from './pages/VehicleDetailPage';
 import type { TenantSummary } from './api/types';
-import { setSessionLostHandler, setTokens } from './api/client';
+import { countAlerts, setSessionLostHandler, setTokens } from './api/client';
 import {
   darkTheme, groundFor, lightTheme, readSidebarCollapsed, readThemePreference,
   storeSidebarCollapsed, storeThemePreference, strokeFor,
@@ -43,11 +44,14 @@ export function App() {
   const [catalogVersion, setCatalogVersion] = useState(0);
   const [mode, setMode] = useState<'light' | 'dark'>(readThemePreference);
   const [collapsed, setCollapsed] = useState<boolean>(readSidebarCollapsed);
+  const [unseenAlerts, setUnseenAlerts] = useState(0);
+  const [alertVersion, setAlertVersion] = useState(0);
 
   const signOut = (): void => {
     setTokens(null, null);
     setSession(null);
     setView({ name: 'search' });
+    setUnseenAlerts(0);
   };
 
   const toggleMode = (): void => {
@@ -90,6 +94,23 @@ export function App() {
     document.body.style.background = groundFor(mode);
   }, [mode]);
 
+  useEffect(() => {
+    // The bell's count. Refreshed when the app opens, when the alerts screen changes something,
+    // and whenever the catalogue does - an import is the most likely thing to have produced a
+    // new match, so a stale zero right after one would be the worst moment to be wrong.
+    if (!session?.permissions.includes('customers.read')) return;
+
+    let cancelled = false;
+
+    countAlerts()
+      .then(({ unseen }) => { if (!cancelled) setUnseenAlerts(unseen); })
+      // A failed count is not worth a message: the bell simply keeps its last number, and
+      // every other screen still works.
+      .catch(() => undefined);
+
+    return () => { cancelled = true; };
+  }, [session, alertVersion, catalogVersion]);
+
   /** The detail view has no sidebar entry of its own; it belongs with the vehicle list. */
   const activeNav: NavKey = view.name === 'vehicle' ? 'search'
     : view.name === 'customer' ? 'customers'
@@ -108,6 +129,7 @@ export function App() {
               onSignOut={signOut}
               mode={mode}
               onToggleMode={toggleMode}
+              unseenAlerts={unseenAlerts}
               collapsed={collapsed}
               onToggleCollapsed={toggleCollapsed}
             >
@@ -123,6 +145,15 @@ export function App() {
                 <CustomersPage
                   canManage={session.permissions.includes('customers.manage')}
                   onOpenCustomer={(id) => setView({ name: 'customer', id })}
+                />
+              )}
+
+              {view.name === 'alerts' && (
+                <AlertsPage
+                  canManage={session.permissions.includes('customers.manage')}
+                  onOpenCustomer={(id) => setView({ name: 'customer', id })}
+                  onOpenVehicle={(id) => setView({ name: 'vehicle', id })}
+                  onChanged={() => setAlertVersion((v) => v + 1)}
                 />
               )}
 

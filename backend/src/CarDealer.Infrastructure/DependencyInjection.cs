@@ -9,6 +9,7 @@ using CarDealer.Integrations.FileImport;
 using CarDealer.Application.Auth;
 using CarDealer.Infrastructure.Audit;
 using CarDealer.Infrastructure.Auth;
+using CarDealer.Infrastructure.Alerts;
 using CarDealer.Infrastructure.Caching;
 using CarDealer.Infrastructure.Import;
 using CarDealer.Infrastructure.Jobs;
@@ -74,6 +75,11 @@ public static class DependencyInjection
         // Reads the tenant's own customer list to find duplicates, so it is scoped like every
         // other tenant-aware service rather than shared.
         services.AddScoped<CustomerCsvImportService>();
+
+        // The scanner is scoped because it runs inside one tenant's scope; the job that walks
+        // every tenant creates those scopes itself, so it is a singleton over the factory.
+        services.AddScoped<RequirementAlertScanner>();
+        services.AddSingleton<RequirementAlertJob>();
 
         AddVehicleSources(services, configuration);
 

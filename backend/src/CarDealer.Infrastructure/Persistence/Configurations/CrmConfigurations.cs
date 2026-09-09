@@ -89,3 +89,55 @@ public class CustomerRequirementConfiguration : IEntityTypeConfiguration<Custome
         builder.HasIndex(r => new { r.TenantId, r.CustomerId, r.Status });
     }
 }
+
+/// <summary>
+/// A match that arrived after the customer asked for it.
+/// </summary>
+/// <remarks>
+/// The unique index is the whole idempotency story. The scan runs on a schedule and can be
+/// triggered by hand; without it, every run would raise the same alert again and the inbox
+/// would fill with the same car. With it, an alert exists once per requirement and vehicle,
+/// ever, and a re-scan is a no-op rather than something to be careful about.
+/// </remarks>
+public class RequirementAlertConfiguration : IEntityTypeConfiguration<RequirementAlert>
+{
+    public void Configure(EntityTypeBuilder<RequirementAlert> builder)
+    {
+        builder.ToTable("RequirementAlerts");
+
+        builder.HasKey(a => a.Id);
+
+        builder.Property(a => a.PriceBaseAtMatch).HasPrecision(18, 2);
+        builder.Property(a => a.BaseCurrencyCode).HasMaxLength(3);
+
+        builder.HasOne(a => a.Tenant)
+            .WithMany()
+            .HasForeignKey(a => a.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Deleting a customer deletes their requirements, and their requirements' alerts go
+        // with them. Erasure has to reach everything derived from the person (O3).
+        builder.HasOne(a => a.CustomerRequirement)
+            .WithMany()
+            .HasForeignKey(a => a.CustomerRequirementId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Restrict rather than cascade: a vehicle belongs to the shared catalogue, and letting
+        // a source deletion silently remove one tenant's alerts would erase the record of what
+        // a salesperson was told. The delete path clears these explicitly instead.
+        builder.HasOne(a => a.Vehicle)
+            .WithMany()
+            .HasForeignKey(a => a.VehicleId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(a => a.SeenByUser)
+            .WithMany()
+            .HasForeignKey(a => a.SeenByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(a => new { a.CustomerRequirementId, a.VehicleId }).IsUnique();
+
+        // The inbox query: this tenant's unseen alerts, newest first.
+        builder.HasIndex(a => new { a.TenantId, a.SeenAtUtc, a.MatchedAtUtc });
+    }
+}

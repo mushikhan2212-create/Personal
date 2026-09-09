@@ -1,4 +1,5 @@
 import type {
+  AlertListResponse, AlertScanResult,
   CustomerDetail, CustomerImportResult, CustomerInput, CustomerListResponse, CustomerStatus,
   ImportResult, LoginResponse, MySource, RequirementInput, RequirementMatches, SyncResult,
   VehicleDetail, VehicleSearchResponse, VehicleSearchSort, VehicleSourceSummary,
@@ -342,3 +343,24 @@ export async function importCustomers(
 
   return (await response.json()) as CustomerImportResult;
 }
+
+// --- Requirement alerts (O11) -------------------------------------------------------------
+
+export const countAlerts = (): Promise<{ unseen: number }> =>
+  request<{ unseen: number }>('/alerts/count');
+
+export const listAlerts = (
+  unseenOnly: boolean, page: number, pageSize: number,
+): Promise<AlertListResponse> =>
+  request<AlertListResponse>(
+    `/alerts?unseenOnly=${unseenOnly}&page=${page}&pageSize=${pageSize}`);
+
+export const markAlertSeen = (id: number): Promise<unknown> =>
+  request(`/alerts/${id}/seen`, { method: 'POST' });
+
+export const markAllAlertsSeen = (): Promise<{ marked: number }> =>
+  request<{ marked: number }>('/alerts/seen', { method: 'POST' });
+
+/** Runs the scan now rather than waiting for the hourly job. Idempotent. */
+export const scanForAlerts = (): Promise<AlertScanResult> =>
+  request<AlertScanResult>('/alerts/scan', { method: 'POST' });

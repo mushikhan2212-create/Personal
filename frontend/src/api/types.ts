@@ -323,3 +323,48 @@ export interface CustomerImportResult {
   /** Problems past the reporting cap, counted rather than listed. */
   unreportedProblems: number;
 }
+
+/** A car that turned up after a customer asked for it (open item O11). */
+export interface RequirementAlertItem {
+  id: number;
+  matchedAtUtc: string;
+  /** Null until somebody has looked at it. */
+  seenAtUtc: string | null;
+  /** The price when the alert was raised, not the price now. */
+  priceBaseAtMatch: number | null;
+  baseCurrencyCode: string | null;
+  customer: {
+    publicId: string;
+    firstName: string | null;
+    lastName: string | null;
+    phone: string | null;
+  };
+  requirement: {
+    customerRequirementId: number;
+    name: string | null;
+    make: string | null;
+    model: string | null;
+  };
+  vehicle: {
+    publicId: string;
+    make: string | null;
+    model: string | null;
+    variant: string | null;
+    year: number | null;
+    mileage: number | null;
+    mileageUnit: MileageUnit;
+    imageUrl: string | null;
+  };
+}
+
+export interface AlertListResponse {
+  items: RequirementAlertItem[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface AlertScanResult {
+  requirementsScanned: number;
+  alertsRaised: number;
+}
