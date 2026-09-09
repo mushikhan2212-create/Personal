@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Alert, Card, List, Modal, Space, Spin, Switch, Tag, Typography, Button, App as AntApp,
+  Alert, App as AntApp, Button, Card, Col, Empty, Flex, Modal, Row, Skeleton, Space, Switch,
+  Tag, Tooltip, Typography,
 } from 'antd';
 import { deleteSource, listMySources, setMySource, syncSource } from '../api/client';
 import type { MySource } from '../api/types';
@@ -24,6 +25,10 @@ interface Props {
  * though: the switch is a private view preference that changes nothing for anyone else, while
  * sync and delete write the shared catalogue. So the switches need no permission and are shown
  * to everyone, and the buttons need vehicles.sync and appear only for Admin and Tenant Owner.
+ *
+ * A card each rather than list rows. A source carries five facts - name, code, size, freshness
+ * and whether the last attempt failed - and on a list row they collapsed into one grey line of
+ * text with the actions crowded against the right margin.
  */
 export function MySourcesPage({ onChanged, canManage }: Props) {
   const { message } = AntApp.useApp();
@@ -128,103 +133,71 @@ export function MySourcesPage({ onChanged, canManage }: Props) {
   };
 
   const enabled = sources.filter((s) => s.isEnabled).length;
+  const listings = sources
+    .filter((s) => s.isEnabled)
+    .reduce((sum, s) => sum + s.vehicleCount, 0);
 
   return (
-    <Space direction="vertical" size={16} style={{ width: '100%', maxWidth: 820 }}>
-      <Typography.Title level={4} style={{ margin: 0 }}>My sources</Typography.Title>
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <Flex justify="space-between" align="center" wrap gap={12}>
+        <Typography.Title level={4} style={{ margin: 0 }}>My sources</Typography.Title>
 
-      <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-        Choose which sources appear in your searches. This affects only you — your colleagues
-        keep their own choices, and nothing is removed from the catalogue. Sources are added by
-        an administrator; a new one is on for everyone until you turn it off.
-      </Typography.Paragraph>
+        {!loading && sources.length > 0 && (
+          // The consequence of the switches, in one line: what this person's searches can
+          // currently see. It is the question the screen exists to answer.
+          <Typography.Text type="secondary">
+            <strong>{enabled}</strong> of {sources.length} on ·{' '}
+            <strong>{listings.toLocaleString()}</strong> listing{listings === 1 ? '' : 's'} in
+            your searches
+          </Typography.Text>
+        )}
+      </Flex>
 
-      {canManage && (
-        <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          As an administrator you can also sync a source or delete it. Those change the
-          catalogue <strong>for everyone</strong> — the switch above only changes your own view.
-        </Typography.Paragraph>
-      )}
+      <Card size="small" styles={{ body: { padding: 14 } }}>
+        <Typography.Text type="secondary">
+          Choose which sources appear in your searches. This affects only you — your colleagues
+          keep their own choices, and nothing is removed from the catalogue. Sources are added
+          by an administrator; a new one is on for everyone until you turn it off.
+          {canManage && (
+            <>
+              {' '}As an administrator you can also sync or delete a source, which changes the
+              catalogue <strong>for everyone</strong>.
+            </>
+          )}
+        </Typography.Text>
+      </Card>
 
       {error && <Alert type="error" showIcon message={error} />}
 
-      <Spin spinning={loading}>
-        <Card size="small">
-          <List
-            dataSource={sources}
-            locale={{ emptyText: 'No sources have been registered yet.' }}
-            renderItem={(s) => (
-              <List.Item
-                actions={[
-                  ...(canManage
-                    ? [
-                        <Button
-                          key="sync"
-                          size="small"
-                          loading={syncing === s.code}
-                          onClick={() => void runSync(s.code, false)}
-                        >
-                          Sync
-                        </Button>,
-
-                        // The expensive path, labelled as such: one request per vehicle
-                        // instead of one per page, in exchange for VINs and source prices.
-                        <Button
-                          key="sync-detail"
-                          size="small"
-                          loading={syncing === s.code}
-                          onClick={() => void runSync(s.code, true)}
-                          title="Fetches each vehicle's detail record. Costs one request per vehicle, and is what makes deduplication and pricing work."
-                        >
-                          Sync + detail
-                        </Button>,
-
-                        <Button key="delete" size="small" danger onClick={() => confirmDelete(s)}>
-                          Delete
-                        </Button>,
-                      ]
-                    : []),
-                  <Switch
-                    key="toggle"
-                    checked={s.isEnabled}
-                    loading={saving === s.code}
-                    onChange={(checked) => void toggle(s, checked)}
-                  />,
-                ]}
-              >
-                <List.Item.Meta
-                  title={
-                    <Space>
-                      <Typography.Text strong={s.isEnabled} type={s.isEnabled ? undefined : 'secondary'}>
-                        {s.name}
-                      </Typography.Text>
-                      <Tag>{s.code}</Tag>
-                      {!s.isShared && <Tag color="blue">private to your tenant</Tag>}
-                    </Space>
-                  }
-                  description={
-                    <Space direction="vertical" size={0}>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                        {s.vehicleCount.toLocaleString()} listing(s)
-                        {s.lastSyncAtUtc && ` · last sync ${formatUtc(s.lastSyncAtUtc)}`}
-                        {!s.isEnabled && ' — hidden from your searches'}
-                      </Typography.Text>
-
-                      {/* A failed run is called a failure. Without this a source whose every
-                          attempt has failed is indistinguishable from one nobody has tried. */}
-                      {s.lastAttemptStatus === 'Failed' && (
-                        <Typography.Text type="danger" style={{ fontSize: 12 }}>
-                          Last sync attempt failed
-                        </Typography.Text>
-                      )}
-                    </Space>
-                  }
-                />
-              </List.Item>
-            )}
-          />
-        </Card>
-      </Spin>
+      {loading
+        ? (
+          <Row gutter={[16, 16]}>
+            {Array.from({ length: 3 }, (_, i) => (
+              <Col key={i} xs={24} md={12} xxl={8}>
+                <Card><Skeleton active paragraph={{ rows: 2 }} /></Card>
+              </Col>
+            ))}
+          </Row>
+        )
+        : sources.length === 0
+          ? <Card><Empty description="No sources have been registered yet." /></Card>
+          : (
+            <Row gutter={[16, 16]}>
+              {sources.map((s) => (
+                <Col key={s.code} xs={24} md={12} xxl={8}>
+                  <SourceCard
+                    source={s}
+                    canManage={canManage}
+                    saving={saving === s.code}
+                    syncing={syncing === s.code}
+                    onToggle={(checked) => void toggle(s, checked)}
+                    onSync={(detail) => void runSync(s.code, detail)}
+                    onDelete={() => confirmDelete(s)}
+                  />
+                </Col>
+              ))}
+            </Row>
+          )}
 
       {/* Turning everything off is allowed - it is your view - but an empty search screen with
           no explanation looks like a broken catalogue rather than a choice you made. */}
@@ -237,5 +210,109 @@ export function MySourcesPage({ onChanged, canManage }: Props) {
         />
       )}
     </Space>
+  );
+}
+
+function SourceCard({ source: s, canManage, saving, syncing, onToggle, onSync, onDelete }: {
+  source: MySource;
+  canManage: boolean;
+  saving: boolean;
+  syncing: boolean;
+  onToggle: (checked: boolean) => void;
+  onSync: (fetchDetail: boolean) => void;
+  onDelete: () => void;
+}) {
+  return (
+    <Card
+      style={{
+        height: '100%',
+        // A source switched off is still readable, just visibly not in play. Hiding it would
+        // make turning it back on impossible.
+        opacity: s.isEnabled ? 1 : 0.62,
+      }}
+      styles={{ body: { padding: 18 } }}
+    >
+      <Flex vertical gap={14} style={{ height: '100%' }}>
+        <Flex justify="space-between" align="flex-start" gap={12}>
+          <Flex vertical gap={4} style={{ minWidth: 0 }}>
+            <Typography.Text strong style={{ fontSize: 15 }} ellipsis={{ tooltip: s.name }}>
+              {s.name}
+            </Typography.Text>
+
+            <Flex gap={6} wrap>
+              <Tag style={{ marginInlineEnd: 0 }}>{s.code}</Tag>
+              {!s.isShared && (
+                <Tag color="blue" style={{ marginInlineEnd: 0 }}>private to your tenant</Tag>
+              )}
+            </Flex>
+          </Flex>
+
+          <Tooltip title={s.isEnabled ? 'Hide from your searches' : 'Show in your searches'}>
+            <Switch checked={s.isEnabled} loading={saving} onChange={onToggle} />
+          </Tooltip>
+        </Flex>
+
+        <Flex gap={24} wrap>
+          <Flex vertical gap={1}>
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>Listings</Typography.Text>
+            <Typography.Text strong style={{ fontSize: 20, lineHeight: 1.2 }}>
+              {s.vehicleCount.toLocaleString()}
+            </Typography.Text>
+          </Flex>
+
+          <Flex vertical gap={1}>
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>Last sync</Typography.Text>
+            <Typography.Text style={{ fontSize: 13 }}>
+              {s.lastSyncAtUtc ? formatUtc(s.lastSyncAtUtc) : 'never'}
+            </Typography.Text>
+          </Flex>
+        </Flex>
+
+        {/* A failed run is called a failure. Without this a source whose every attempt has
+            failed is indistinguishable from one nobody has tried. */}
+        {s.lastAttemptStatus === 'Failed' && (
+          <Alert
+            type="error"
+            showIcon
+            style={{ padding: '6px 10px' }}
+            message={
+              <Typography.Text style={{ fontSize: 12 }}>Last sync attempt failed</Typography.Text>
+            }
+          />
+        )}
+
+        {!s.isEnabled && (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            Hidden from your searches.
+          </Typography.Text>
+        )}
+
+        {canManage && (
+          <Flex
+            gap={8}
+            wrap
+            style={{
+              marginTop: 'auto',
+              paddingTop: 12,
+              borderTop: '1px solid var(--app-stroke)',
+            }}
+          >
+            <Button size="small" loading={syncing} onClick={() => onSync(false)}>Sync</Button>
+
+            {/* The expensive path, labelled as such: one request per vehicle instead of one
+                per page, in exchange for VINs and source prices. */}
+            <Tooltip title="Fetches each vehicle's detail record. Costs one request per vehicle, and is what makes deduplication and pricing work.">
+              <Button size="small" loading={syncing} onClick={() => onSync(true)}>
+                Sync + detail
+              </Button>
+            </Tooltip>
+
+            <Button size="small" danger onClick={onDelete} style={{ marginInlineStart: 'auto' }}>
+              Delete
+            </Button>
+          </Flex>
+        )}
+      </Flex>
+    </Card>
   );
 }

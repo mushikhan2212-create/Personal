@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
-  Alert, Button, Card, Col, Descriptions, Empty, Flex, Image, Row, Space, Spin, Table, Tag,
-  Tooltip, Typography,
+  Alert, Button, Card, Col, Empty, Flex, Image, Row, Space, Spin, Table, Tag, Tooltip,
+  Typography,
 } from 'antd';
 import { getVehicle } from '../api/client';
 import type { CanonicalHashSource, VehicleDetail, VehicleDetailListing } from '../api/types';
@@ -42,13 +42,12 @@ const money = (amount: number | null, currency: string | null): string => {
   }
 };
 
-
 /** Shown in place of a photo that will not load. Inline so it needs no network of its own. */
 const MISSING_PHOTO = 'data:image/svg+xml;utf8,'
   + encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120">'
-    + '<rect width="160" height="120" fill="%23e2e8f0"/>'
-    + '<text x="80" y="64" font-family="sans-serif" font-size="11" fill="%2394a3b8" '
+    '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360">'
+    + '<rect width="640" height="360" fill="%23e2e8f0"/>'
+    + '<text x="320" y="188" font-family="sans-serif" font-size="18" fill="%2394a3b8" '
     + 'text-anchor="middle">No photo</text></svg>',
   );
 
@@ -81,6 +80,12 @@ export function VehicleDetailPage({ id, onBack }: Props) {
   const title = [vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'Unidentified vehicle';
   const age = ageInDays(vehicle.listings[0]?.lastSeenAtUtc ?? null);
 
+  // The cheapest offer is what the search screen showed, so it is what the price here has to
+  // agree with. Anything else and the two screens contradict each other on the same car.
+  const best = [...vehicle.listings]
+    .filter((l) => l.price !== null)
+    .sort((a, b) => (a.price ?? 0) - (b.price ?? 0))[0] ?? vehicle.listings[0];
+
   const columns = [
     {
       title: 'Source',
@@ -93,7 +98,9 @@ export function VehicleDetailPage({ id, onBack }: Props) {
     {
       title: 'Asking price',
       key: 'price',
-      render: (_: unknown, l: VehicleDetailListing) => money(l.price, l.currencyCode),
+      render: (_: unknown, l: VehicleDetailListing) => (
+        <Typography.Text strong>{money(l.price, l.currencyCode)}</Typography.Text>
+      ),
     },
     {
       title: 'In USD',
@@ -111,7 +118,7 @@ export function VehicleDetailPage({ id, onBack }: Props) {
       title: 'Incoterm',
       key: 'incoterm',
       render: (_: unknown, l: VehicleDetailListing) => (
-        <Tag color={l.priceType === 'Unknown' ? 'default' : 'green'}>
+        <Tag color={l.priceType === 'Unknown' ? 'default' : 'green'} style={{ marginInlineEnd: 0 }}>
           {PRICE_TYPE_LABEL[l.priceType] ?? l.priceType}
         </Tag>
       ),
@@ -124,19 +131,20 @@ export function VehicleDetailPage({ id, onBack }: Props) {
     {
       title: 'Last confirmed',
       key: 'seen',
-      render: (_: unknown, l: VehicleDetailListing) => formatUtc(l.lastSeenAtUtc),
+      align: 'right' as const,
+      render: (_: unknown, l: VehicleDetailListing) => (
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          {formatUtc(l.lastSeenAtUtc)}
+        </Typography.Text>
+      ),
     },
   ];
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Flex justify="space-between" align="center" wrap gap={12}>
-        <Space direction="vertical" size={0}>
-          <Typography.Title level={3} style={{ margin: 0 }}>{title}</Typography.Title>
-          <Typography.Text type="secondary">{vehicle.variant}</Typography.Text>
-        </Space>
-        <Button onClick={onBack}>Back to search</Button>
-      </Flex>
+      <Button type="text" size="small" onClick={onBack} style={{ paddingInline: 4 }}>
+        ← Back to search
+      </Button>
 
       {age !== null && age > STALE_AFTER_DAYS && (
         <Alert
@@ -147,93 +155,281 @@ export function VehicleDetailPage({ id, onBack }: Props) {
         />
       )}
 
+      {/*
+        Photo and price side by side, which is the pair of facts anyone opens this screen for.
+        The specification used to be a bordered definition list beside a wall of 160px
+        thumbnails; both were legible and neither was what the page is about.
+      */}
       <Row gutter={[16, 16]}>
-        <Col xs={24} lg={12}>
-          <Card size="small" title={`Photos (${vehicle.imageUrls.length})`}>
-            {vehicle.imageUrls.length === 0
-              ? <Empty description="No photos supplied by the source" />
-              : (
-                <Image.PreviewGroup>
-                  <Flex wrap gap={8}>
-                    {vehicle.imageUrls.map((url) => (
-                      <Image
-                        key={url}
-                        src={url}
-                        width={160}
-                        height={120}
-                        // A source's image can 404 or be blocked, and the default broken-image
-                        // box reads as the app failing rather than the photo missing.
-                        fallback={MISSING_PHOTO}
-                        style={{ objectFit: 'cover', borderRadius: 4 }}
-                      />
-                    ))}
-                  </Flex>
-                </Image.PreviewGroup>
-              )}
-          </Card>
+        <Col xs={24} lg={14}>
+          <Gallery urls={vehicle.imageUrls} alt={title} />
         </Col>
 
-        <Col xs={24} lg={12}>
-          <Card size="small" title="Specification">
-            <Descriptions column={1} size="small" bordered>
-              <Descriptions.Item label="Year">{vehicle.year ?? '—'}</Descriptions.Item>
-              <Descriptions.Item label="Mileage">
-                {vehicle.mileage === null
-                  ? '—'
-                  : `${vehicle.mileage.toLocaleString()} ${vehicle.mileageUnit === 'Miles' ? 'mi' : 'km'}`}
-              </Descriptions.Item>
-              <Descriptions.Item label="Steering">{vehicle.steeringSide}</Descriptions.Item>
-              <Descriptions.Item label="Fuel">{vehicle.fuelType}</Descriptions.Item>
-              <Descriptions.Item label="Transmission">{vehicle.transmission}</Descriptions.Item>
-              <Descriptions.Item label="Drivetrain">{vehicle.drivetrain}</Descriptions.Item>
-              <Descriptions.Item label="Body">{vehicle.bodyType ?? '—'}</Descriptions.Item>
-              <Descriptions.Item label="Engine">
-                {vehicle.engineDisplacementCc ? `${vehicle.engineDisplacementCc} cc` : '—'}
-              </Descriptions.Item>
-              <Descriptions.Item label="Colour">{vehicle.exteriorColor ?? '—'}</Descriptions.Item>
-              <Descriptions.Item label="Status">{vehicle.status}</Descriptions.Item>
-            </Descriptions>
+        <Col xs={24} lg={10}>
+          <Card style={{ height: '100%' }}>
+            <Flex vertical gap={16}>
+              <Flex vertical gap={4}>
+                <Typography.Title level={3} style={{ margin: 0 }}>{title}</Typography.Title>
+
+                {vehicle.variant && (
+                  <Typography.Text type="secondary">{vehicle.variant}</Typography.Text>
+                )}
+              </Flex>
+
+              <Flex align="baseline" gap={10} wrap>
+                <Typography.Text strong style={{ fontSize: 30, lineHeight: 1.1 }}>
+                  {money(best?.price ?? null, best?.currencyCode ?? null)}
+                </Typography.Text>
+
+                <Tooltip
+                  title={best?.priceType === 'Unknown'
+                    ? 'The source did not state an incoterm, so this price is not comparable '
+                      + 'with a quoted FOB or CIF price.'
+                    : `Quoted ${PRICE_TYPE_LABEL[best?.priceType ?? 'Unknown']}`}
+                >
+                  <Tag
+                    color={best?.priceType === 'Unknown' ? 'default' : 'green'}
+                    style={{ marginInlineEnd: 0 }}
+                  >
+                    {PRICE_TYPE_LABEL[best?.priceType ?? 'Unknown']}
+                  </Tag>
+                </Tooltip>
+
+                {vehicle.listings.length > 1 && (
+                  <Tag color="blue" style={{ marginInlineEnd: 0 }}>
+                    cheapest of {vehicle.listings.length}
+                  </Tag>
+                )}
+              </Flex>
+
+              {vehicle.tenantPrice !== null && (
+                <Typography.Text type="success">
+                  Your price: {money(vehicle.tenantPrice, vehicle.tenantCurrencyCode)}
+                </Typography.Text>
+              )}
+
+              <div style={{ borderTop: '1px solid var(--app-stroke)', paddingTop: 16 }}>
+                <Row gutter={[12, 14]}>
+                  <Spec label="Year" value={vehicle.year === null ? '—' : String(vehicle.year)} />
+                  <Spec
+                    label="Mileage"
+                    value={vehicle.mileage === null
+                      ? '—'
+                      : `${vehicle.mileage.toLocaleString()} ${vehicle.mileageUnit === 'Miles' ? 'mi' : 'km'}`}
+                  />
+                  <Spec label="Steering" value={vehicle.steeringSide} />
+                  <Spec label="Fuel" value={vehicle.fuelType} />
+                  <Spec label="Transmission" value={vehicle.transmission} />
+                  <Spec label="Drivetrain" value={vehicle.drivetrain} />
+                  <Spec label="Body" value={vehicle.bodyType ?? '—'} />
+                  <Spec
+                    label="Engine"
+                    value={vehicle.engineDisplacementCc ? `${vehicle.engineDisplacementCc} cc` : '—'}
+                  />
+                  <Spec label="Colour" value={vehicle.exteriorColor ?? '—'} />
+                  <Spec label="Status" value={vehicle.status} />
+                </Row>
+              </div>
+            </Flex>
           </Card>
         </Col>
       </Row>
 
-      <Card size="small" title={`Offers (${vehicle.listings.length})`}>
+      <Card title={`Offers (${vehicle.listings.length})`}>
         <Table
           rowKey={(l) => `${l.sourceName}-${l.externalListingId}`}
           dataSource={vehicle.listings}
           columns={columns}
           pagination={false}
           size="small"
+          scroll={{ x: 700 }}
         />
-
-        {vehicle.tenantPrice !== null && (
-          <Typography.Paragraph type="success" style={{ marginTop: 12, marginBottom: 0 }}>
-            Your price: {money(vehicle.tenantPrice, vehicle.tenantCurrencyCode)}
-          </Typography.Paragraph>
-        )}
       </Card>
 
       {/* The honest part of the screen: it says what this car was matched on, and admits when
           nothing could be. A merge nobody can inspect is a merge nobody should trust. */}
-      <Card size="small" title="Identity and deduplication">
-        <Descriptions column={{ xs: 1, md: 2 }} size="small" bordered>
-          <Descriptions.Item label="VIN">{vehicle.vin ?? 'not supplied'}</Descriptions.Item>
-          <Descriptions.Item label="Chassis number">
-            {vehicle.chassisNumber ?? 'not supplied'}
-          </Descriptions.Item>
-          <Descriptions.Item label="Lot number">{vehicle.lotNumber ?? 'not supplied'}</Descriptions.Item>
-          <Descriptions.Item label="Matched on">
+      <Card title="Identity and deduplication">
+        <Row gutter={[12, 14]}>
+          <Spec label="VIN" value={vehicle.vin ?? 'not supplied'} span={{ xs: 12, md: 6 }} />
+          <Spec
+            label="Chassis number"
+            value={vehicle.chassisNumber ?? 'not supplied'}
+            span={{ xs: 12, md: 6 }}
+          />
+          <Spec
+            label="Lot number"
+            value={vehicle.lotNumber ?? 'not supplied'}
+            span={{ xs: 12, md: 6 }}
+          />
+          <Col xs={24} md={6}>
+            <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
+              Matched on
+            </Typography.Text>
+
             {vehicle.canonicalHashSource === null || vehicle.canonicalHashSource === 'Unknown'
               ? (
-                <Typography.Text type="warning">
+                <Typography.Text type="warning" style={{ fontSize: 13 }}>
                   nothing — with no identifier, this car cannot be merged with the same car
                   offered by another source
                 </Typography.Text>
               )
-              : MATCHED_ON[vehicle.canonicalHashSource]}
-          </Descriptions.Item>
-        </Descriptions>
+              : (
+                <Typography.Text style={{ fontSize: 13 }}>
+                  {MATCHED_ON[vehicle.canonicalHashSource]}
+                </Typography.Text>
+              )}
+          </Col>
+        </Row>
       </Card>
     </Space>
+  );
+}
+
+/** One labelled fact in the specification grid. */
+function Spec({ label, value, span }: {
+  label: string;
+  value: string;
+  span?: { xs: number; md: number };
+}) {
+  return (
+    <Col xs={span?.xs ?? 12} md={span?.md ?? 8}>
+      <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
+        {label}
+      </Typography.Text>
+      <Typography.Text style={{ fontSize: 14 }}>{value}</Typography.Text>
+    </Col>
+  );
+}
+
+/**
+ * How many thumbnails sit under the main photo before the rest fold into a "+N" tile.
+ *
+ * Eight is one row on a laptop. Not a style choice: a real BE FORWARD listing carries sixty-six
+ * photos, and laying them all out buries the offers table and the identity panel under a wall
+ * of tiles.
+ */
+const STRIP_LIMIT = 8;
+
+/**
+ * One large photo with a strip of the first few beneath it, and the rest one click away.
+ *
+ * The grid of equal 160px tiles it replaced gave a car with twelve photos the same visual
+ * weight as its specification, and none of them big enough to judge condition from - which is
+ * the only reason to look at them.
+ */
+function Gallery({ urls, alt }: { urls: string[]; alt: string }) {
+  const [active, setActive] = useState(0);
+  const [open, setOpen] = useState(false);
+
+  if (urls.length === 0) {
+    return (
+      <Card style={{ height: '100%' }}>
+        <Flex align="center" justify="center" style={{ minHeight: 320 }}>
+          <Empty description="No photos supplied by the source" />
+        </Flex>
+      </Card>
+    );
+  }
+
+  // A source can withdraw a photo between the sync and this page load, so the index is clamped
+  // rather than trusted - a stale one would render nothing at all.
+  const current = urls[Math.min(active, urls.length - 1)];
+  const shown = urls.slice(0, STRIP_LIMIT);
+  const hidden = urls.length - shown.length;
+
+  return (
+    <Card styles={{ body: { padding: 12 } }}>
+      {/* items rather than a hidden stack of Image elements: the group takes the whole list and
+          renders only the one on screen. Real listings carry sixty-odd photos, and mounting all
+          of them to make the preview work put sixty invisible boxes in the layout. */}
+      <Image.PreviewGroup
+        items={urls}
+        preview={{
+          visible: open,
+          current: Math.min(active, urls.length - 1),
+          onVisibleChange: setOpen,
+          onChange: setActive,
+        }}
+      >
+        <div style={{ borderRadius: 8, overflow: 'hidden', background: 'rgba(127,127,127,0.08)' }}>
+          <Image
+            src={current}
+            alt={alt}
+            fallback={MISSING_PHOTO}
+            width="100%"
+            style={{ aspectRatio: '16 / 10', objectFit: 'cover', display: 'block' }}
+          />
+        </div>
+      </Image.PreviewGroup>
+
+      {urls.length > 1 && (
+        <Flex gap={8} wrap style={{ marginTop: 12 }}>
+          {shown.map((url, i) => (
+            <Thumb
+              key={url}
+              url={url}
+              label={`Photo ${i + 1} of ${urls.length}`}
+              selected={i === active}
+              onClick={() => setActive(i)}
+            />
+          ))}
+
+          {/* The rest are reachable, just not laid out. Sixty-six tiles is a wall that pushes
+              the offers and the identity panel off the screen entirely. */}
+          {hidden > 0 && (
+            <button
+              type="button"
+              onClick={() => { setActive(STRIP_LIMIT); setOpen(true); }}
+              aria-label={`View the other ${hidden} photos`}
+              style={{
+                width: 84,
+                height: 60,
+                border: '1px solid var(--app-stroke)',
+                borderRadius: 6,
+                cursor: 'pointer',
+                background: 'rgba(127,127,127,0.08)',
+                color: 'inherit',
+                fontSize: 13,
+              }}
+            >
+              +{hidden}
+            </button>
+          )}
+        </Flex>
+      )}
+    </Card>
+  );
+}
+
+function Thumb({ url, label, selected, onClick }: {
+  url: string;
+  label: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      aria-current={selected}
+      style={{
+        padding: 0,
+        border: selected ? '2px solid #3C50E0' : '1px solid var(--app-stroke)',
+        borderRadius: 6,
+        overflow: 'hidden',
+        cursor: 'pointer',
+        background: 'none',
+        lineHeight: 0,
+      }}
+    >
+      <img
+        src={url}
+        alt=""
+        loading="lazy"
+        onError={(e) => { e.currentTarget.src = MISSING_PHOTO; }}
+        style={{ width: 84, height: 60, objectFit: 'cover', display: 'block' }}
+      />
+    </button>
   );
 }
