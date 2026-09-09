@@ -1,0 +1,87 @@
+/*
+ * The handful of rules Ant Design's tokens cannot express.
+ *
+ * Everything that can be a token is one, in theme.ts. What is left here is either a property
+ * Ant does not expose (the card elevation on a bordered card) or a browser surface Ant does
+ * not own (scrollbars). Anything added below should fail that test first.
+ */
+
+/*
+ * TailAdmin's shadow-default on every panel.
+ *
+ * Ant applies its own shadow only to borderless cards, and these keep their border - the
+ * border draws the edge, the shadow lifts the card off the ground, and TailAdmin uses the two
+ * together. Scoped to a card that is not inside another card, because two stacked shadows
+ * read as a rendering fault rather than as depth.
+ */
+.ant-card:not(.ant-card .ant-card) {
+  box-shadow: 0px 8px 13px -3px rgba(0, 0, 0, 0.07);
+}
+
+/* Dark surfaces need a deeper shadow to register at all against a dark ground. */
+[data-theme='dark'] .ant-card:not(.ant-card .ant-card) {
+  box-shadow: 0px 8px 13px -3px rgba(0, 0, 0, 0.28);
+}
+
+/*
+ * The sidebar's width change, and the label fade that goes with it.
+ *
+ * Ant animates the width already; without this the labels vanish a frame before the panel
+ * finishes moving, which reads as a flicker rather than as a collapse.
+ */
+.ant-layout-sider {
+  transition: all 0.2s ease-in-out;
+}
+
+/*
+ * A thin scrollbar inside the dark sidebar.
+ *
+ * The platform default is a light-grey bar on a navy panel, which is the brightest thing on
+ * the screen for something nobody is looking at.
+ */
+.app-sider-nav {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.app-sider-nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.app-sider-nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+}
+
+.app-sider-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/*
+ * A card that is a link to somewhere: the vehicle cards, the requirement cards.
+ *
+ * Lifting on hover is the affordance that says a whole tile is clickable. Without it the only
+ * clue is the cursor, which is invisible until you are already over the right thing.
+ */
+.app-clickable-card {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.app-clickable-card:hover {
+  transform: translateY(-2px);
+  border-color: #3c50e0;
+  box-shadow: 0px 12px 20px -6px rgba(60, 80, 224, 0.22);
+}
+
+/* Nobody should get a motion effect they have asked their system not to send them. */
+@media (prefers-reduced-motion: reduce) {
+  .ant-layout-sider,
+  .app-clickable-card {
+    transition: none;
+  }
+
+  .app-clickable-card:hover {
+    transform: none;
+  }
+}

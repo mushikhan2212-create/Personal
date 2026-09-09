@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import 'antd/dist/reset.css';
+import './index.css';
 import { App } from './App';
 
 // Theme and the Ant App context live inside App, because both depend on the light/dark choice

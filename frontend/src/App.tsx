@@ -11,7 +11,10 @@ import { SearchPage } from './pages/SearchPage';
 import { VehicleDetailPage } from './pages/VehicleDetailPage';
 import type { TenantSummary } from './api/types';
 import { setSessionLostHandler, setTokens } from './api/client';
-import { darkTheme, lightTheme, readThemePreference, storeThemePreference } from './theme';
+import {
+  darkTheme, groundFor, lightTheme, readSidebarCollapsed, readThemePreference,
+  storeSidebarCollapsed, storeThemePreference, strokeFor,
+} from './theme';
 
 export interface Session {
   tenant: TenantSummary;
@@ -39,6 +42,7 @@ export function App() {
   const [view, setView] = useState<View>({ name: 'search' });
   const [catalogVersion, setCatalogVersion] = useState(0);
   const [mode, setMode] = useState<'light' | 'dark'>(readThemePreference);
+  const [collapsed, setCollapsed] = useState<boolean>(readSidebarCollapsed);
 
   const signOut = (): void => {
     setTokens(null, null);
@@ -51,6 +55,13 @@ export function App() {
       const next = current === 'dark' ? 'light' : 'dark';
       storeThemePreference(next);
       return next;
+    });
+  };
+
+  const toggleCollapsed = (): void => {
+    setCollapsed((current) => {
+      storeSidebarCollapsed(!current);
+      return !current;
     });
   };
 
@@ -68,14 +79,15 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    // The shell's header border reads from this, so it follows the theme without the two
-    // files having to import each other's palette. colorScheme makes the browser's own
-    // chrome - scrollbars, form controls - match rather than staying stubbornly light.
-    document.documentElement.style.setProperty(
-      '--shell-border',
-      mode === 'dark' ? '#1e293b' : '#e2e8f0',
-    );
+    // Every hand-drawn border in the app reads from this variable, so they follow the theme
+    // without each file having to import the palette. data-theme is what index.css switches
+    // the card elevation on, since a shadow tuned for a white ground is invisible on a dark
+    // one. colorScheme makes the browser's own chrome - scrollbars, form controls - match
+    // rather than staying stubbornly light.
+    document.documentElement.style.setProperty('--app-stroke', strokeFor(mode));
+    document.documentElement.dataset.theme = mode;
     document.documentElement.style.colorScheme = mode;
+    document.body.style.background = groundFor(mode);
   }, [mode]);
 
   /** The detail view has no sidebar entry of its own; it belongs with the vehicle list. */
@@ -96,6 +108,8 @@ export function App() {
               onSignOut={signOut}
               mode={mode}
               onToggleMode={toggleMode}
+              collapsed={collapsed}
+              onToggleCollapsed={toggleCollapsed}
             >
               {view.name === 'search' && (
                 <SearchPage

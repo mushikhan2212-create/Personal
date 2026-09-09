@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Alert, App as AntApp, Button, Card, Collapse, Descriptions, Drawer, Empty, Flex, Form,
+  Alert, App as AntApp, Avatar, Button, Card, Collapse, Drawer, Empty, Flex, Form,
   Input, InputNumber, Pagination, Select, Space, Spin, Tag, Typography,
 } from 'antd';
 import {
@@ -9,7 +9,7 @@ import {
 import type {
   CustomerDetail, Requirement, RequirementInput, RequirementMatches,
 } from '../api/types';
-import { VehicleTable } from '../components/VehicleTable';
+import { VehicleCards } from '../components/VehicleCards';
 import { formatUtc } from '../format';
 
 interface Props {
@@ -19,14 +19,24 @@ interface Props {
   onOpenVehicle: (id: string) => void;
 }
 
-/** Matches per page. Enough that scrolling beats paging for most requirements. */
-const PAGE_SIZE = 25;
+/** Matches per page. A requirement that fits 46 cars should not render 46 cards at once. */
+const PAGE_SIZE = 12;
 
 const STATUS_COLOUR: Record<string, string | undefined> = {
   Open: 'blue',
   OnHold: undefined,
   Fulfilled: 'green',
   Cancelled: undefined,
+};
+
+/** Customer states worth a colour. The rest read better plain. */
+const CUSTOMER_STATUS_COLOUR: Record<string, string | undefined> = {
+  Unknown: undefined,
+  Lead: 'blue',
+  Active: 'green',
+  Customer: 'green',
+  Dormant: undefined,
+  Closed: undefined,
 };
 
 export function CustomerDetailPage({ publicId, canManage, onBack, onOpenVehicle }: Props) {
@@ -85,7 +95,8 @@ export function CustomerDetailPage({ publicId, canManage, onBack, onOpenVehicle 
   };
 
   const removeCustomer = (): void => {
-    const name = [customer?.firstName, customer?.lastName].filter(Boolean).join(' ') || 'this customer';
+    const name = [customer?.firstName, customer?.lastName].filter(Boolean).join(' ')
+      || 'this customer';
 
     modal.confirm({
       title: `Delete ${name}?`,
@@ -129,70 +140,104 @@ export function CustomerDetailPage({ publicId, canManage, onBack, onOpenVehicle 
   if (!customer) return null;
 
   const name = [customer.firstName, customer.lastName].filter(Boolean).join(' ') || '(no name)';
+  const where = [customer.city, customer.countryCode].filter(Boolean).join(', ');
+  const initials = (customer.firstName?.[0] ?? '') + (customer.lastName?.[0] ?? '');
+  const open = customer.requirements.filter((r) => r.status === 'Open').length;
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Flex justify="space-between" align="flex-start" wrap gap={12}>
-        <Flex vertical gap={2}>
-          <Typography.Title level={4} style={{ margin: 0 }}>{name}</Typography.Title>
-          <Typography.Text type="secondary">
-            {[customer.city, customer.countryCode].filter(Boolean).join(', ') || '—'}
-          </Typography.Text>
+      <Button type="text" size="small" onClick={onBack} style={{ paddingInline: 4 }}>
+        ← Back to customers
+      </Button>
+
+      {/*
+        One identity card rather than a "Details" panel of label/value rows.
+        A customer is a person, and the things you need before picking up the phone - who they
+        are, where they are, how to reach them, how warm they are - belong together at the top
+        where they can be read in one look. The previous layout put six labelled rows in a side
+        column, which is a database view of a person.
+      */}
+      <Card>
+        <Flex justify="space-between" align="flex-start" wrap gap={20}>
+          <Flex gap={18} align="center" wrap>
+            <Avatar
+              size={72}
+              style={{ backgroundColor: '#3C50E0', fontSize: 26, flexShrink: 0 }}
+            >
+              {initials.toUpperCase() || '?'}
+            </Avatar>
+
+            <Flex vertical gap={8}>
+              <Flex align="center" gap={10} wrap>
+                <Typography.Title level={4} style={{ margin: 0 }}>{name}</Typography.Title>
+
+                <Tag
+                  color={CUSTOMER_STATUS_COLOUR[customer.status]}
+                  style={{ marginInlineEnd: 0 }}
+                >
+                  {customer.status}
+                </Tag>
+
+                {customer.leadSource !== 'Unknown' && (
+                  <Tag style={{ marginInlineEnd: 0 }}>via {customer.leadSource}</Tag>
+                )}
+              </Flex>
+
+              <Flex gap={20} wrap>
+                <Contact label="Phone" value={customer.phone} href={customer.phone
+                  ? `tel:${customer.phone.replace(/\s/g, '')}` : null}
+                />
+                <Contact label="Email" value={customer.email} href={customer.email
+                  ? `mailto:${customer.email}` : null}
+                />
+                <Contact label="Location" value={where || null} href={null} />
+                <Contact label="Language" value={customer.preferredLanguage} href={null} />
+              </Flex>
+
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Added {formatUtc(customer.createdAtUtc)}
+                {open > 0 && ` · ${open} open requirement${open === 1 ? '' : 's'}`}
+              </Typography.Text>
+            </Flex>
+          </Flex>
+
+          {canManage && <Button danger onClick={removeCustomer}>Delete</Button>}
         </Flex>
 
-        <Space>
-          <Button onClick={onBack}>Back to customers</Button>
-          {canManage && <Button danger onClick={removeCustomer}>Delete</Button>}
-        </Space>
-      </Flex>
-
-      {/* Details across the top rather than in a side column, so the match table below gets
-          the whole width. Beside it the table fell under the 900px it needs and every vehicle
-          name ellipsed to "TOYOTA Corolla …" - twenty-five identical-looking rows is not a
-          shortlist a salesperson can work from. */}
-      <Card size="small" title="Details">
-        <Descriptions column={{ xs: 1, sm: 2, lg: 3, xl: 6 }} size="small">
-          <Descriptions.Item label="Phone">{customer.phone ?? '—'}</Descriptions.Item>
-          <Descriptions.Item label="Email">{customer.email ?? '—'}</Descriptions.Item>
-          <Descriptions.Item label="Language">
-            {customer.preferredLanguage ?? '—'}
-          </Descriptions.Item>
-          <Descriptions.Item label="Status">
-            <Tag style={{ marginInlineEnd: 0 }}>{customer.status}</Tag>
-          </Descriptions.Item>
-          <Descriptions.Item label="Came from">{customer.leadSource}</Descriptions.Item>
-          <Descriptions.Item label="Added">
-            {formatUtc(customer.createdAtUtc)}
-          </Descriptions.Item>
-        </Descriptions>
-
         {customer.notes && (
-          <>
+          <div
+            style={{
+              marginTop: 18,
+              paddingTop: 16,
+              borderTop: '1px solid var(--app-stroke)',
+            }}
+          >
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>Notes</Typography.Text>
             <Typography.Paragraph style={{ marginTop: 4, marginBottom: 0 }}>
               {customer.notes}
             </Typography.Paragraph>
-          </>
+          </div>
         )}
       </Card>
 
       <Card
-        size="small"
         title={`Looking for (${customer.requirements.length})`}
         extra={canManage && (
-          <Button size="small" type="primary" onClick={() => setDrawerOpen(true)}>
-            Add requirement
-          </Button>
+          <Button type="primary" onClick={() => setDrawerOpen(true)}>Add requirement</Button>
         )}
-        styles={{ body: { padding: customer.requirements.length === 0 ? 24 : 0 } }}
+        styles={{ body: { padding: customer.requirements.length === 0 ? 24 : 12 } }}
       >
         {customer.requirements.length === 0
           ? <Empty description="Nothing recorded yet." image={Empty.PRESENTED_IMAGE_SIMPLE} />
           : (
             <Collapse
-              ghost
+              accordion
+              // Bordered panels rather than the ghost variant: each requirement is a separate
+              // thing with its own matches, and a flat list of headings made two requirements
+              // look like one with a subheading.
               items={customer.requirements.map((r) => ({
                 key: String(r.id),
+                style: { marginBottom: 8, borderRadius: 8, overflow: 'hidden' },
                 label: (
                   <Flex justify="space-between" align="center" gap={12}>
                     <Flex vertical gap={2} style={{ minWidth: 0 }}>
@@ -307,6 +352,25 @@ export function CustomerDetailPage({ publicId, canManage, onBack, onOpenVehicle 
   );
 }
 
+/** One contact fact, as a link where following it is the obvious next action. */
+function Contact({ label, value, href }: {
+  label: string;
+  value: string | null;
+  href: string | null;
+}) {
+  return (
+    <Flex vertical gap={1}>
+      <Typography.Text type="secondary" style={{ fontSize: 11 }}>{label}</Typography.Text>
+
+      {value === null
+        ? <Typography.Text type="secondary">—</Typography.Text>
+        : href
+          ? <Typography.Link href={href}>{value}</Typography.Link>
+          : <Typography.Text>{value}</Typography.Text>}
+    </Flex>
+  );
+}
+
 /**
  * The stock that fits one requirement.
  *
@@ -375,7 +439,8 @@ function RequirementMatchesPanel({
       {matches && (
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
           <strong>{matches.totalCount.toLocaleString()}</strong>
-          {matches.totalCount === 1 ? ' car fits' : ' cars fit'} · {matches.elapsedMilliseconds} ms
+          {matches.totalCount === 1 ? ' car fits' : ' cars fit'} · sorted by price, cheapest
+          first · {matches.elapsedMilliseconds} ms
         </Typography.Text>
       )}
 
@@ -388,19 +453,14 @@ function RequirementMatchesPanel({
         )
         : (
           <>
-            <VehicleTable
+            <VehicleCards
               items={matches?.items ?? []}
               loading={loading}
-              sort="PriceAscending"
-              // Sorting a match list would mean re-querying with a different order, which is a
-              // vehicle-screen concern. Here the cheapest fit first is the answer.
-              onSortChange={() => undefined}
               onOpen={onOpenVehicle}
             />
 
-            {/* VehicleTable draws no pager of its own - the search screen supplies one below
-                it - so without this the panel said "46 cars fit" and showed the cheapest 25,
-                with nothing on screen admitting the other 21 existed. */}
+            {/* Without this the panel said "46 cars fit" and showed the cheapest handful, with
+                nothing on screen admitting the rest existed. */}
             {(matches?.totalCount ?? 0) > PAGE_SIZE && (
               <Flex justify="flex-end">
                 <Pagination

@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import { searchVehicles } from '../api/client';
 import type { VehicleSearchResponse, VehicleSearchSort } from '../api/types';
-import { VehicleTable } from '../components/VehicleTable';
+import { VehicleCards } from '../components/VehicleCards';
 
 interface Props {
   onOpenVehicle: (id: string) => void;
@@ -27,10 +27,30 @@ interface Filters {
   sort: VehicleSearchSort;
 }
 
-/** Rows, not tiles, so a screenful is worth more. */
-const PAGE_SIZE = 25;
+/**
+ * How many cards a page holds, which depends on whether anyone has asked for anything.
+ *
+ * Opening the screen is not a search - it is a glance at what is there. Loading a full page of
+ * cards for that means the catalogue's photos and the query behind them are fetched before
+ * anybody has said what they want, and on a large catalogue that is the slowest thing the app
+ * does for the least reason. Ten is enough to show the screen works; a real search gets a real
+ * page.
+ *
+ * The cap is stated on screen rather than left to be inferred, because a silent limit is
+ * indistinguishable from a catalogue that only has ten cars in it.
+ */
+const BROWSE_PAGE_SIZE = 10;
+const SEARCH_PAGE_SIZE = 24;
 
 const EMPTY: Filters = { q: '', sort: 'RecentlySeen' };
+
+/** Whether the user has actually asked for something, as opposed to just arriving. */
+function isNarrowed(f: Filters): boolean {
+  return f.q.trim() !== '' || REFINEMENTS.some((k) => f[k] !== undefined && f[k] !== '');
+}
+
+const pageSizeFor = (f: Filters): number =>
+  (isNarrowed(f) ? SEARCH_PAGE_SIZE : BROWSE_PAGE_SIZE);
 
 /** Everything except the free-text box and the sort, which have their own controls. */
 const REFINEMENTS = [
@@ -84,7 +104,9 @@ export function SearchPage({ onOpenVehicle, onOpenMySources, catalogVersion }: P
     setError(null);
 
     try {
-      setResult(await searchVehicles({ ...current, page: nextPage, pageSize: PAGE_SIZE }));
+      setResult(await searchVehicles({
+        ...current, page: nextPage, pageSize: pageSizeFor(current),
+      }));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Search failed.');
     } finally {
@@ -128,7 +150,12 @@ export function SearchPage({ onOpenVehicle, onOpenMySources, catalogVersion }: P
   };
 
   const active = REFINEMENTS.filter((k) => filters[k] !== undefined && filters[k] !== '');
-  const hasQuery = filters.q.trim() !== '' || active.length > 0;
+  const hasQuery = isNarrowed(filters);
+  const pageSize = pageSizeFor(filters);
+
+  // Only worth saying when the cap is actually hiding something. On a catalogue of six cars
+  // "showing 10 of 6" would be noise about a limit nobody reached.
+  const capped = !hasQuery && result !== null && result.totalCount > BROWSE_PAGE_SIZE;
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -195,8 +222,18 @@ export function SearchPage({ onOpenVehicle, onOpenMySources, catalogVersion }: P
 
       {error && <Alert type="error" showIcon message={error} />}
 
-      <Card size="small" styles={{ body: { padding: 0 } }}>
-        {result && result.items.length === 0 && !loading ? (
+      {capped && (
+        <Alert
+          type="info"
+          showIcon
+          message={`Showing the first ${BROWSE_PAGE_SIZE} of `
+            + `${result.totalCount.toLocaleString()} vehicles. Search or filter to narrow the `
+            + 'catalogue down to what you are actually looking for.'}
+        />
+      )}
+
+      {result && result.items.length === 0 && !loading ? (
+        <Card size="small">
           <div style={{ padding: '48px 16px' }}>
             <Empty
               description={
@@ -214,23 +251,21 @@ export function SearchPage({ onOpenVehicle, onOpenMySources, catalogVersion }: P
                 : <Button onClick={onOpenMySources}>My sources</Button>}
             </Empty>
           </div>
-        ) : (
-          <VehicleTable
-            items={result?.items ?? []}
-            loading={loading}
-            sort={filters.sort}
-            onSortChange={changeSort}
-            onOpen={onOpenVehicle}
-          />
-        )}
-      </Card>
+        </Card>
+      ) : (
+        <VehicleCards
+          items={result?.items ?? []}
+          loading={loading}
+          onOpen={onOpenVehicle}
+        />
+      )}
 
-      {result && result.totalCount > PAGE_SIZE && (
+      {result && result.totalCount > pageSize && (
         <Flex justify="flex-end">
           <Pagination
             current={page}
             total={result.totalCount}
-            pageSize={PAGE_SIZE}
+            pageSize={pageSize}
             showSizeChanger={false}
             onChange={(p) => {
               setPage(p);
