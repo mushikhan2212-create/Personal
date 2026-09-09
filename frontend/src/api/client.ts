@@ -381,3 +381,30 @@ export const draftWhatsApp = (
     method: 'POST',
     body: JSON.stringify({ customerPublicId, vehiclePublicId, body }),
   });
+
+/**
+ * Saves one listing photo to the viewer's device.
+ *
+ * Fetched through the API rather than linked to directly, for two reasons: the access token
+ * has to travel with the request, and a browser ignores the `download` attribute on a
+ * cross-origin link — so a direct link to the exporter's CDN opens the image in a tab instead
+ * of saving it, which is not what "attach this to a message" needs.
+ */
+export async function savePhoto(path: string, filename: string): Promise<void> {
+  const response = await fetch(path, { headers: accessTokenHeader() });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, `Could not fetch that photo (${response.status}).`);
+  }
+
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = filename;
+  link.click();
+
+  // Released on a later tick: revoking synchronously races the save in some browsers and
+  // produces an empty file.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

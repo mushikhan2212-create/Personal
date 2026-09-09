@@ -12,6 +12,7 @@ import type {
 import { VehicleCards } from '../components/VehicleCards';
 import { WhatsAppButton } from '../components/WhatsAppButton';
 import { WhatsAppDrawer } from '../components/WhatsAppDrawer';
+import { PlusGlyph, TrashGlyph } from '../components/icons';
 import { formatUtc } from '../format';
 
 interface Props {
@@ -23,13 +24,6 @@ interface Props {
 
 /** Matches per page. A requirement that fits 46 cars should not render 46 cards at once. */
 const PAGE_SIZE = 12;
-
-const STATUS_COLOUR: Record<string, string | undefined> = {
-  Open: 'blue',
-  OnHold: undefined,
-  Fulfilled: 'green',
-  Cancelled: undefined,
-};
 
 /** Customer states worth a colour. The rest read better plain. */
 const CUSTOMER_STATUS_COLOUR: Record<string, string | undefined> = {
@@ -49,6 +43,7 @@ export function CustomerDetailPage({ publicId, canManage, onBack, onOpenVehicle 
   const [error, setError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [messaging, setMessaging] = useState(false);
+  const [messagingVehicle, setMessagingVehicle] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm<RequirementInput>();
 
@@ -206,7 +201,9 @@ export function CustomerDetailPage({ publicId, canManage, onBack, onOpenVehicle 
 
           <Flex gap={8} wrap>
             {canManage && <WhatsAppButton onClick={() => setMessaging(true)} />}
-            {canManage && <Button danger onClick={removeCustomer}>Delete</Button>}
+            {canManage && (
+              <Button danger icon={<TrashGlyph />} onClick={removeCustomer}>Delete</Button>
+            )}
           </Flex>
         </Flex>
 
@@ -229,7 +226,9 @@ export function CustomerDetailPage({ publicId, canManage, onBack, onOpenVehicle 
       <Card
         title={`Looking for (${customer.requirements.length})`}
         extra={canManage && (
-          <Button type="primary" onClick={() => setDrawerOpen(true)}>Add requirement</Button>
+          <Button type="primary" icon={<PlusGlyph />} onClick={() => setDrawerOpen(true)}>
+            Add requirement
+          </Button>
         )}
         styles={{ body: { padding: customer.requirements.length === 0 ? 24 : 12 } }}
       >
@@ -245,19 +244,13 @@ export function CustomerDetailPage({ publicId, canManage, onBack, onOpenVehicle 
                 key: String(r.id),
                 style: { marginBottom: 8, borderRadius: 8, overflow: 'hidden' },
                 label: (
-                  <Flex justify="space-between" align="center" gap={12}>
-                    <Flex vertical gap={2} style={{ minWidth: 0 }}>
-                      <Typography.Text strong>
-                        {r.name ?? ([r.make, r.model].filter(Boolean).join(' ') || 'Requirement')}
-                      </Typography.Text>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                        {summarise(r)}
-                      </Typography.Text>
-                    </Flex>
-
-                    <Tag color={STATUS_COLOUR[r.status]} style={{ marginInlineEnd: 0 }}>
-                      {r.status}
-                    </Tag>
+                  <Flex vertical gap={2} style={{ minWidth: 0 }}>
+                    <Typography.Text strong>
+                      {r.name ?? ([r.make, r.model].filter(Boolean).join(' ') || 'Requirement')}
+                    </Typography.Text>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      {summarise(r)}
+                    </Typography.Text>
                   </Flex>
                 ),
                 children: (
@@ -267,6 +260,7 @@ export function CustomerDetailPage({ publicId, canManage, onBack, onOpenVehicle 
                     canManage={canManage}
                     onOpenVehicle={onOpenVehicle}
                     onDelete={() => removeRequirement(r)}
+                    onMessageVehicle={(id) => setMessagingVehicle(id)}
                   />
                 ),
               }))}
@@ -275,9 +269,10 @@ export function CustomerDetailPage({ publicId, canManage, onBack, onOpenVehicle 
       </Card>
 
       <WhatsAppDrawer
-        open={messaging}
-        onClose={() => setMessaging(false)}
+        open={messaging || messagingVehicle !== null}
+        onClose={() => { setMessaging(false); setMessagingVehicle(null); }}
         customerPublicId={publicId}
+        vehiclePublicId={messagingVehicle ?? undefined}
         customerName={name}
       />
 
@@ -392,13 +387,14 @@ function Contact({ label, value, href }: {
  * are collapsed.
  */
 function RequirementMatchesPanel({
-  publicId, requirement, canManage, onOpenVehicle, onDelete,
+  publicId, requirement, canManage, onOpenVehicle, onDelete, onMessageVehicle,
 }: {
   publicId: string;
   requirement: Requirement;
   canManage: boolean;
   onOpenVehicle: (id: string) => void;
   onDelete: () => void;
+  onMessageVehicle: (vehiclePublicId: string) => void;
 }) {
   const [matches, setMatches] = useState<RequirementMatches | null>(null);
   const [page, setPage] = useState(1);
@@ -437,7 +433,7 @@ function RequirementMatchesPanel({
         </Space>
 
         {canManage && (
-          <Button size="small" danger type="text" onClick={onDelete}>Delete</Button>
+          <Button size="small" danger icon={<TrashGlyph />} onClick={onDelete}>Delete</Button>
         )}
       </Flex>
 
@@ -470,6 +466,8 @@ function RequirementMatchesPanel({
               items={matches?.items ?? []}
               loading={loading}
               onOpen={onOpenVehicle}
+              // The customer is known here, so sending one of these to them is one click.
+              onMessage={canManage ? onMessageVehicle : undefined}
             />
 
             {/* Without this the panel said "46 cars fit" and showed the cheapest handful, with

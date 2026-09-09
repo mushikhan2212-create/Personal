@@ -16,15 +16,15 @@ namespace CarDealer.Infrastructure.Messaging;
 /// goes is closer to autonomous than to assisted.
 ///
 /// <para>
-/// What goes in is what a buyer asks in their reply anyway - year, mileage, drivetrain, the
-/// price with its incoterm, and a link to the source listing so they can see the photos. Two
-/// things stay out on purpose: anything the platform is not sure of, and the flourish. A
-/// message that reads as though a machine wrote it gets answered like one.
+/// What goes in is the car itself: year, mileage, drivetrain. What stays out is the price and
+/// the source listing link - see the note in <c>ForVehicle</c>, which is about margin rather
+/// than brevity. Also out: anything the platform is not sure of, and the flourish. A message
+/// that reads as though a machine wrote it gets answered like one.
 /// </para>
 /// </remarks>
 public static class MessageComposer
 {
-    public static string ForVehicle(Customer customer, Vehicle vehicle, VehicleListing? listing, string tenantName)
+    public static string ForVehicle(Customer customer, Vehicle vehicle, string tenantName)
     {
         var text = new StringBuilder();
 
@@ -67,28 +67,18 @@ public static class MessageComposer
             text.Append("\n• ").Append(string.Join(" · ", specs));
         }
 
-        if (listing?.Price is { } price)
-        {
-            text.Append("\n• Price: ")
-                .Append(price.ToString("N0", CultureInfo.InvariantCulture))
-                .Append(' ')
-                .Append(listing.CurrencyCode ?? string.Empty);
-
-            // The incoterm travels with the price or the number means nothing: an FOB figure
-            // and a CIF figure are not the same offer, and a buyer comparing quotes needs to
-            // know which one this is.
-            if (listing.PriceType != PriceType.Unknown)
-            {
-                text.Append(" (").Append(Incoterm(listing.PriceType)).Append(')');
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(listing?.SourceUrl))
-        {
-            text.Append("\n\nPhotos and full details: ").Append(listing.SourceUrl);
-        }
-
-        text.Append("\n\nHappy to send more photos or answer anything.\n").Append(tenantName);
+        // Neither the price nor the source listing link goes in.
+        //
+        // The link is the important one: this dealer brokers other exporters' stock, and the
+        // URL names the exporter. A customer who follows it can buy direct, which is the
+        // dealer's margin walking out of the door. The price is left out for the same reason
+        // in a softer form - a quote is a conversation, and a number in an opening message
+        // invites a haggle before anyone has established the car is right.
+        //
+        // Photos are attached by the salesperson in WhatsApp rather than linked: a click-to-chat
+        // link carries text only, and the image URL would name the exporter exactly as the
+        // listing link does.
+        text.Append("\n\nHappy to answer any questions.\n").Append(tenantName);
 
         return text.ToString();
     }
@@ -109,13 +99,4 @@ public static class MessageComposer
 
         return string.IsNullOrWhiteSpace(name) ? "vehicle" : name;
     }
-
-    private static string Incoterm(PriceType type) => type switch
-    {
-        PriceType.ExWorks => "EXW",
-        PriceType.FreeOnBoard => "FOB",
-        PriceType.CostAndFreight => "CFR",
-        PriceType.CostInsuranceFreight => "CIF",
-        _ => string.Empty,
-    };
 }

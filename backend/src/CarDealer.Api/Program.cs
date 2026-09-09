@@ -2,6 +2,7 @@ using System.Text;
 using System.Threading.RateLimiting;
 using Asp.Versioning;
 using CarDealer.Api.Authorization;
+using CarDealer.Api.Controllers;
 using System.Text.Json.Serialization;
 using CarDealer.Api.Serialization;
 using CarDealer.Api.Configuration;
@@ -195,6 +196,18 @@ builder.Services.AddHangfire((sp, config) => config
         }));
 
 builder.Services.AddHangfireServer();
+
+// ---------------------------------------------------------------------------
+// Fetching listing photos so a salesperson can attach one to a message.
+// ---------------------------------------------------------------------------
+// A short timeout and a hard size cap, because the address belongs to a third party: a source
+// that hangs must fail this one request rather than tie up a worker, and a source that serves
+// something enormous must not be able to spend the API's memory on it.
+builder.Services.AddHttpClient(VehiclesController.VehiclePhotoClient, client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.MaxResponseContentBufferSize = 12L * 1024 * 1024;
+});
 
 // ---------------------------------------------------------------------------
 // OpenAPI (criterion F7 - under decision D10 this IS the Phase 0 product surface)

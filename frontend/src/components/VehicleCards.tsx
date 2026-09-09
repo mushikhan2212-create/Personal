@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Card, Col, Flex, Row, Skeleton, Tag, Tooltip, Typography } from 'antd';
 import type { PriceType, VehicleSummary } from '../api/types';
+import { WhatsAppButton } from './WhatsAppButton';
 import { describeAge, formatMoney, formatUtc } from '../format';
 
 /** Incoterms read as codes in this trade, not as prose. */
@@ -25,6 +26,14 @@ interface Props {
   items: VehicleSummary[];
   loading: boolean;
   onOpen: (id: string) => void;
+  /**
+   * Offers a WhatsApp button on every card when supplied.
+   *
+   * Given on a customer's match list, where the recipient is already known and sending is the
+   * next thing anyone does. Omitted on the search screen, where there is no customer in scope
+   * and the button would ask "to whom?" on every one of twenty-four cards.
+   */
+  onMessage?: (id: string) => void;
 }
 
 /**
@@ -43,7 +52,7 @@ interface Props {
  * Sorting moved to the control above the grid. A card has no column header to click, which is
  * the one thing genuinely lost here, and the screen already had that dropdown.
  */
-export function VehicleCards({ items, loading, onOpen }: Props) {
+export function VehicleCards({ items, loading, onOpen, onMessage }: Props) {
   if (loading && items.length === 0) {
     return (
       <Row gutter={[16, 16]}>
@@ -67,16 +76,17 @@ export function VehicleCards({ items, loading, onOpen }: Props) {
     <Row gutter={[16, 16]}>
       {items.map((v) => (
         <Col key={v.id} {...SPAN}>
-          <VehicleCard vehicle={v} onOpen={onOpen} />
+          <VehicleCard vehicle={v} onOpen={onOpen} onMessage={onMessage} />
         </Col>
       ))}
     </Row>
   );
 }
 
-function VehicleCard({ vehicle: v, onOpen }: {
+function VehicleCard({ vehicle: v, onOpen, onMessage }: {
   vehicle: VehicleSummary;
   onOpen: (id: string) => void;
+  onMessage?: (id: string) => void;
 }) {
   const title = [v.make, v.model].filter(Boolean).join(' ') || 'Unidentified vehicle';
   const { label: age, isStale } = describeAge(v.lastSeenAtUtc);
@@ -162,7 +172,19 @@ function VehicleCard({ vehicle: v, onOpen }: {
               )}
             </Flex>
 
-            <Flex vertical align="flex-end" gap={2} style={{ minWidth: 0 }}>
+            <Flex vertical align="flex-end" gap={4} style={{ minWidth: 0 }}>
+              {onMessage && (
+                <div
+                  // The whole card opens the vehicle, so the button has to stop the click
+                  // reaching it - otherwise sending a message also navigates away from the
+                  // list the salesperson is working through.
+                  onClick={(e) => { e.stopPropagation(); onMessage(v.id); }}
+                  role="presentation"
+                >
+                  <WhatsAppButton size="small" onClick={() => undefined}>Send</WhatsAppButton>
+                </div>
+              )}
+
               <Typography.Text
                 type="secondary"
                 style={{ fontSize: 11, maxWidth: 130 }}

@@ -389,4 +389,19 @@ export interface MessageDraft {
   handoffUrl: string | null;
   /** Why no message could be prepared, in words a salesperson can act on. */
   reason: string | null;
+  /**
+   * The car's photos, for the salesperson to attach in WhatsApp.
+   *
+   * Beside the message rather than in it: click-to-chat carries text only, and putting the
+   * exporter's image URL in the text would name the supplier to the customer.
+   */
+  photos: MessagePhoto[];
+}
+
+export interface MessagePhoto {
+  index: number;
+  /** The source's own address, for showing a thumbnail here. */
+  url: string;
+  /** Through our API, so the browser saves the file instead of opening it in a tab. */
+  downloadUrl: string | null;
 }

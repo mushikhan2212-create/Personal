@@ -18,6 +18,9 @@ namespace CarDealer.Api.Controllers;
 [Route("api/v{version:apiVersion}/vehicles")]
 public sealed class VehiclesController : ControllerBase
 {
+    /// <summary>Named client for fetching listing photos, configured in Program.</summary>
+    public const string VehiclePhotoClient = "vehicle-photos";
+
     private readonly ISearchProvider _search;
     private readonly CarDealerDbContext _db;
 
@@ -107,6 +110,100 @@ public sealed class VehiclesController : ControllerBase
             ElapsedMilliseconds = (int)result.Elapsed.TotalMilliseconds,
         });
     }
+
+    /// <summary>
+    /// Streams one of a vehicle's photos back as a file to save.
+    /// </summary>
+    /// <remarks>
+    /// So a salesperson can attach the photo to a WhatsApp message. A click-to-chat link
+    /// carries text only, and putting the exporter's image URL in the message would name the
+    /// supplier - the same leak that keeps the source listing link out of it. Downloading the
+    /// file and attaching it sends the customer a photo and nothing else.
+    ///
+    /// <para>
+    /// It also has to be a proxy rather than a direct link: the browser's <c>download</c>
+    /// attribute is ignored cross-origin, so a link straight to the exporter's CDN opens the
+    /// image in a tab instead of saving it.
+    /// </para>
+    ///
+    /// <para>
+    /// Not an open proxy. The address fetched is read from this vehicle's own rows by index -
+    /// the caller chooses which of its photos, never what to fetch - so there is no URL in the
+    /// request for anyone to point somewhere else.
+    /// </para>
+    /// </remarks>
+    [HttpGet("{publicId:guid}/photos/{index:int}")]
+    [HasPermission(Permissions.VehiclesRead)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> Photo(
+        Guid publicId,
+        int index,
+        [FromServices] IHttpClientFactory clients,
+        CancellationToken ct)
+    {
+        var url = await _db.Vehicles
+            .AsNoTracking()
+            .Where(v => v.PublicId == publicId)
+            .SelectMany(v => v.Images.OrderBy(i => i.SortOrder))
+            .Skip(Math.Max(0, index))
+            .Select(i => i.ImageUrl)
+            .FirstOrDefaultAsync(ct)
+            .ConfigureAwait(false);
+
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = $"Vehicle '{publicId}' has no photo at position {index}.",
+                Status = StatusCodes.Status404NotFound,
+            });
+        }
+
+        var client = clients.CreateClient(VehiclePhotoClient);
+
+        try
+        {
+            using var response = await client.GetAsync(url, ct).ConfigureAwait(false);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                // The source withdrew it, or is refusing us. Either way it is their failure,
+                // and 502 says so rather than blaming the request.
+                return StatusCode(StatusCodes.Status502BadGateway, new ProblemDetails
+                {
+                    Title = "The source did not return that photo.",
+                    Detail = $"It answered {(int)response.StatusCode}.",
+                    Status = StatusCodes.Status502BadGateway,
+                });
+            }
+
+            var bytes = await response.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
+            var contentType = response.Content.Headers.ContentType?.MediaType ?? "image/jpeg";
+
+            // Buffered rather than streamed: these are listing photos, a few hundred kilobytes,
+            // and buffering means a source that stalls mid-transfer fails as an error rather
+            // than as a truncated file the salesperson sends to a customer.
+            return File(bytes, contentType, $"vehicle-{publicId}-{index + 1}{Extension(contentType)}");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new ProblemDetails
+            {
+                Title = "That photo could not be fetched from the source.",
+                Status = StatusCodes.Status502BadGateway,
+            });
+        }
+    }
+
+    private static string Extension(string contentType) => contentType switch
+    {
+        "image/png" => ".png",
+        "image/webp" => ".webp",
+        "image/gif" => ".gif",
+        _ => ".jpg",
+    };
 
     /// <summary>One vehicle in full, with every image and every listing offering it.</summary>
     /// <remarks>

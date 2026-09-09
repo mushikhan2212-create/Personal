@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Drawer, Flex, Input, Select, Skeleton, Tag, Typography } from 'antd';
-import { draftWhatsApp, listCustomers } from '../api/client';
-import type { CustomerListItem, MessageDraft } from '../api/types';
+import { Alert, App as AntApp, Button, Drawer, Flex, Input, Select, Skeleton, Tag, Typography } from 'antd';
+import { draftWhatsApp, listCustomers, savePhoto } from '../api/client';
+import type { CustomerListItem, MessageDraft, MessagePhoto } from '../api/types';
+import { DownloadGlyph } from './icons';
 
 interface Props {
   open: boolean;
@@ -36,6 +37,8 @@ const REDRAFT_DELAY_MS = 400;
 export function WhatsAppDrawer({
   open, onClose, customerPublicId, vehiclePublicId, customerName,
 }: Props) {
+  const { message } = AntApp.useApp();
+
   const [draft, setDraft] = useState<MessageDraft | null>(null);
   const [body, setBody] = useState('');
   const [loading, setLoading] = useState(false);
@@ -43,6 +46,7 @@ export function WhatsAppDrawer({
   const [picked, setPicked] = useState<string | null>(null);
   const [choices, setChoices] = useState<CustomerListItem[]>([]);
   const [searching, setSearching] = useState(false);
+  const [savingPhotos, setSavingPhotos] = useState(false);
 
   const needsPicker = customerPublicId === null;
   const activeCustomer = customerPublicId ?? picked;
@@ -114,6 +118,30 @@ export function WhatsAppDrawer({
 
     return () => clearTimeout(timer);
   }, [body, open, activeCustomer, vehiclePublicId]);
+
+  const saveAll = async (): Promise<void> => {
+    if (!draft) return;
+
+    setSavingPhotos(true);
+
+    try {
+      // One at a time. Firing ten downloads at once makes the browser's pop-up blocker treat
+      // the later ones as unsolicited, and they vanish without saying so.
+      for (const photo of draft.photos) {
+        if (photo.downloadUrl) await savePhoto(photo.downloadUrl, `photo-${photo.index + 1}.jpg`);
+      }
+
+      void message.success(
+        `${draft.photos.length} photo${draft.photos.length === 1 ? '' : 's'} saved. `
+        + 'Attach them in WhatsApp with the paperclip.',
+        6,
+      );
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : 'Could not save the photos.');
+    } finally {
+      setSavingPhotos(false);
+    }
+  };
 
   const ready = draft?.canSend === true && draft.handoffUrl !== null;
 
@@ -216,6 +244,14 @@ export function WhatsAppDrawer({
             placeholder="Your message"
           />
 
+          {(draft?.photos.length ?? 0) > 0 && (
+            <Photos
+              photos={draft!.photos}
+              saving={savingPhotos}
+              onSaveAll={() => void saveAll()}
+            />
+          )}
+
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             {draft?.canSendDirectly
               ? 'This will be sent from your business number.'
@@ -225,5 +261,56 @@ export function WhatsAppDrawer({
         </Flex>
       )}
     </Drawer>
+  );
+}
+
+/**
+ * The car's photos, to save and attach.
+ *
+ * WhatsApp's click-to-chat link carries text and nothing else, so a photo cannot travel in the
+ * message however it is encoded. Putting the image URL in the text is the usual workaround and
+ * is worse than useless here: it names the exporter to the customer, which is exactly what
+ * leaving the source listing link out was for. So the photos are downloaded and attached by
+ * hand - two taps, and the customer receives a picture with no address on it.
+ *
+ * Sending the image itself becomes possible with the WhatsApp Business API, which supports an
+ * image message with a caption.
+ */
+function Photos({ photos, saving, onSaveAll }: {
+  photos: MessagePhoto[];
+  saving: boolean;
+  onSaveAll: () => void;
+}) {
+  return (
+    <Flex vertical gap={8}>
+      <Flex justify="space-between" align="center" gap={8} wrap>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          {photos.length} photo{photos.length === 1 ? '' : 's'} — save and attach in WhatsApp
+        </Typography.Text>
+
+        <Button size="small" loading={saving} icon={<DownloadGlyph />} onClick={onSaveAll}>
+          Save {photos.length === 1 ? 'photo' : 'all'}
+        </Button>
+      </Flex>
+
+      <Flex gap={6} wrap>
+        {photos.map((photo) => (
+          <img
+            key={photo.index}
+            src={photo.url}
+            alt=""
+            loading="lazy"
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            style={{
+              width: 68,
+              height: 50,
+              objectFit: 'cover',
+              borderRadius: 6,
+              border: '1px solid var(--app-stroke)',
+            }}
+          />
+        ))}
+      </Flex>
+    </Flex>
   );
 }

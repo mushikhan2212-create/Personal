@@ -45,7 +45,7 @@ public sealed class MessagingTests : IClassFixture<ApiFactory>
     }
 
     /// <summary>Puts one priced car in the catalogue. Each test class gets its own database.</summary>
-    private async Task<Guid> AddVehicleAsync(string marker)
+    private async Task<Guid> AddVehicleAsync(string marker, int withPhotos = 0)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<CarDealerDbContext>();
@@ -94,6 +94,18 @@ public sealed class MessagingTests : IClassFixture<ApiFactory>
         });
 
         await db.SaveChangesAsync();
+
+        for (var i = 0; i < withPhotos; i++)
+        {
+            db.VehicleImages.Add(new VehicleImage
+            {
+                VehicleId = vehicle.Id,
+                ImageUrl = $"https://images.example.test/{marker}/{i}.jpg",
+                SortOrder = i,
+            });
+        }
+
+        if (withPhotos > 0) await db.SaveChangesAsync();
 
         return vehicle.PublicId;
     }
@@ -184,7 +196,7 @@ public sealed class MessagingTests : IClassFixture<ApiFactory>
     }
 
     [Fact]
-    public async Task A_draft_about_a_car_carries_its_price_and_incoterm()
+    public async Task A_draft_about_a_car_describes_it_without_pricing_it()
     {
         var m = Marker();
         var client = await _factory.AuthenticatedClientAsync("owner@nihon-motors.test");
@@ -205,12 +217,61 @@ public sealed class MessagingTests : IClassFixture<ApiFactory>
         Assert.Contains("48,000 km", body, StringComparison.Ordinal);
         Assert.Contains("Petrol · Automatic · RHD", body, StringComparison.Ordinal);
 
-        // A price without its incoterm is not a quote - an FOB figure and a CIF figure are
-        // different offers, and a buyer comparing them needs to know which this is.
-        Assert.Contains("Price: 5,390 USD (FOB)", body, StringComparison.Ordinal);
+        // The dealer brokers other exporters' stock, so the source listing URL names their
+        // supplier. A customer who follows it can buy direct - this is margin, not tidiness.
+        Assert.DoesNotContain("example.test", body, StringComparison.Ordinal);
 
-        // And the source link, so they can see the photos without a second message.
-        Assert.Contains("https://example.test/listing/1", body, StringComparison.Ordinal);
+        // And no URL of any kind, so an image address cannot leak the supplier either.
+        Assert.DoesNotContain("http", body, StringComparison.OrdinalIgnoreCase);
+
+        // No price: a quote is a conversation, not an opening line.
+        Assert.DoesNotContain("5,390", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("Price", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("FOB", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Photos_come_back_beside_the_draft_rather_than_inside_it()
+    {
+        // Click-to-chat carries text only, so the photo cannot be in the message. It is offered
+        // for the salesperson to attach in WhatsApp instead - which also keeps the exporter's
+        // image host out of what the customer sees.
+        var m = Marker();
+        var client = await _factory.AuthenticatedClientAsync("owner@nihon-motors.test");
+        var customer = await AddCustomerAsync(client, m, "+92 300 1234567", "PK");
+        var vehicleId = await AddVehicleAsync(m, withPhotos: 3);
+
+        var draft = await DraftAsync(client, new
+        {
+            customerPublicId = customer,
+            vehiclePublicId = vehicleId,
+        });
+
+        var photos = draft.GetProperty("photos").EnumerateArray().ToList();
+
+        Assert.Equal(3, photos.Count);
+        Assert.Equal(0, photos[0].GetProperty("index").GetInt32());
+
+        // Downloaded by position through our own API, so the route never takes an address from
+        // the caller and cannot be pointed anywhere else.
+        Assert.Equal(
+            $"/api/v1/vehicles/{vehicleId}/photos/0",
+            photos[0].GetProperty("downloadUrl").GetString());
+
+        Assert.DoesNotContain("http", draft.GetProperty("body").GetString()!,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task A_photo_that_does_not_exist_is_a_404()
+    {
+        var m = Marker();
+        var client = await _factory.AuthenticatedClientAsync("owner@nihon-motors.test");
+        var vehicleId = await AddVehicleAsync(m, withPhotos: 1);
+
+        var response = await client.GetAsync($"/api/v1/vehicles/{vehicleId}/photos/7");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]

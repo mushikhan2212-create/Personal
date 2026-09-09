@@ -380,6 +380,25 @@ customer. When it refuses, the drawer says what to fix on the customer record.
 Passing `body` sends that text instead of the composed one; the screen does this on every edit
 so the link always matches what is on screen.
 
+**The message carries no URL and no price.** This dealer brokers other exporters' stock, and a
+source listing link names the supplier — a customer who follows it can buy direct. The price is
+out for a softer version of the same reason: a quote is a conversation, not an opening line.
+
+**Photos are attached, not linked.** A click-to-chat link carries text only, so a photo cannot
+travel inside the message however it is encoded — and the usual workaround, putting the image
+URL in the text, names the exporter exactly as the listing link would. So the draft returns the
+car's photos alongside the message and the compose screen offers them for download:
+
+```
+GET /api/v1/vehicles/{publicId}/photos/{index}
+```
+
+The salesperson saves them and attaches them in WhatsApp with the paperclip; the customer
+receives a picture with no address on it. The route proxies rather than redirects, because a
+browser ignores `download` on a cross-origin link — and it takes an index rather than a URL, so
+it reads the address out of our own rows and cannot be pointed anywhere else. Sending the image
+itself becomes possible with the Business API, which supports an image message with a caption.
+
 ## New-match alerts
 
 When a car is added to the catalogue **after** a customer has said what they are looking for,

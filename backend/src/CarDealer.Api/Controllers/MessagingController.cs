@@ -32,6 +32,15 @@ namespace CarDealer.Api.Controllers;
 [Route("api/v{version:apiVersion}/messaging")]
 public sealed class MessagingController : ControllerBase
 {
+    /// <summary>
+    /// How many photos the compose screen offers.
+    /// </summary>
+    /// <remarks>
+    /// A real listing carries sixty-odd. Nobody attaches sixty photos to a WhatsApp message,
+    /// and offering them all turns the drawer into the gallery it is not.
+    /// </remarks>
+    private const int MaxPhotosOffered = 10;
+
     private readonly CarDealerDbContext _db;
     private readonly ITenantContext _tenant;
     private readonly IMessagingProvider _provider;
@@ -87,7 +96,7 @@ public sealed class MessagingController : ControllerBase
             .ConfigureAwait(false) ?? string.Empty;
 
         Vehicle? vehicle = null;
-        VehicleListing? listing = null;
+        var photos = Array.Empty<string>();
 
         if (request.VehiclePublicId is { } vehiclePublicId)
         {
@@ -105,15 +114,16 @@ public sealed class MessagingController : ControllerBase
                 });
             }
 
-            // The cheapest active offer, which is the price every other screen shows for this
-            // car. Quoting a different one would contradict the search results the salesperson
-            // is looking at while they send the message.
-            listing = await _db.VehicleListings
+            // Returned so the compose screen can show them and offer them for download. They
+            // are not put in the message: a click-to-chat link carries text only, and an image
+            // URL would name the exporter exactly as the listing link did.
+            photos = await _db.VehicleImages
                 .AsNoTracking()
-                .Include(l => l.VehicleSource)
-                .Where(l => l.VehicleId == vehicle.Id && l.IsActive)
-                .OrderBy(l => l.PriceBaseCurrency ?? decimal.MaxValue)
-                .FirstOrDefaultAsync(ct)
+                .Where(i => i.VehicleId == vehicle.Id)
+                .OrderBy(i => i.SortOrder)
+                .Take(MaxPhotosOffered)
+                .Select(i => i.ImageUrl)
+                .ToArrayAsync(ct)
                 .ConfigureAwait(false);
         }
 
@@ -121,7 +131,7 @@ public sealed class MessagingController : ControllerBase
             ? request.Body
             : vehicle is null
                 ? MessageComposer.ForCustomer(customer, tenantName)
-                : MessageComposer.ForVehicle(customer, vehicle, listing, tenantName);
+                : MessageComposer.ForVehicle(customer, vehicle, tenantName);
 
         var dispatch = await _provider
             .DispatchAsync(new MessageDraft(customer.Phone, customer.CountryCode, body), ct)
@@ -142,6 +152,18 @@ public sealed class MessagingController : ControllerBase
             canSend = dispatch.Kind != DispatchKind.Failed,
             handoffUrl = dispatch.HandoffUrl,
             reason = dispatch.Reason,
+
+            // For the salesperson to attach in WhatsApp. Indexed rather than sent as URLs to
+            // download from, so the download route reads the address out of our own database
+            // instead of accepting one from the caller.
+            photos = photos.Select((url, index) => new
+            {
+                index,
+                url,
+                downloadUrl = request.VehiclePublicId is null
+                    ? null
+                    : $"/api/v1/vehicles/{request.VehiclePublicId}/photos/{index}",
+            }),
         });
     }
 }
