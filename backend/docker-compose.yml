@@ -60,6 +60,19 @@ services:
       # before `docker compose up`. Left empty the platform runs normally with sync disabled:
       # the sync endpoint answers 503 and search over already-synced data is unaffected.
       Carapis__ApiKey: "${CARAPIS_API_KEY:-}"
+
+      # The ranking provider, passed through the same way and for the same reason.
+      #
+      # These must be listed here explicitly: compose interpolates backend/.env into THIS file,
+      # it does not hand the file to the container. A variable nobody names below is a variable
+      # the application never sees - which for AI__ApiKey means the feature stays unconfigured,
+      # says so on screen, and gives no hint that the key was set correctly in the wrong place.
+      AI__Provider: "${AI__Provider:-}"
+      AI__Model: "${AI__Model:-}"
+      AI__ApiKey: "${AI__ApiKey:-}"
+      AI__BaseUrl: "${AI__BaseUrl:-}"
+      AI__MaxCandidates: "${AI__MaxCandidates:-20}"
+      AI__MaxTokens: "${AI__MaxTokens:-8000}"
     ports:
       - "5080:8080"
     healthcheck:

@@ -19,17 +19,50 @@ are in [D19](02-decisions.md#d19--a-preference-the-broker-states-is-code-not-a-s
 
 ## 1. Put the key somewhere it will never reach git
 
-Three options, any of which works. **Never `appsettings.json` or `appsettings.Development.json`**:
-those are committed, and a key in git history is permanent.
+**Never `appsettings.json` or `appsettings.Development.json`**: those are committed, and a key in
+git history is permanent. Never `backend/.env.example` either — that one is committed too, and
+the name makes it look safe.
+
+The settings are the same whichever way you run the API:
 
 ```bash
-# backend/.env  — already git-ignored
 AI__Provider=groq
 AI__Model=<the model id, exactly as the provider spells it>
 AI__ApiKey=<your key>
+AI__MaxCandidates=8
+AI__MaxTokens=1200
 ```
 
 The double underscore is how .NET nests configuration: `AI__Provider` sets `AI:Provider`.
+
+**Where they go depends on how you start the API, and the two are not interchangeable.**
+
+| How you run it | Where the settings go |
+| --- | --- |
+| `docker compose up` | `backend/.env` — git-ignored, read by compose |
+| `dotnet run` | exported in your shell, or `dotnet user-secrets` |
+
+`backend/.env` is read by **docker compose**, not by .NET. Compose interpolates it into
+`docker-compose.yml`, which then passes named variables into the container — so a variable has to
+be listed in the `api` service's `environment:` block to reach the application at all. The
+`AI__*` ones are listed there. If you add a new setting, add it there too, or it will be set
+correctly and have no effect.
+
+For `dotnet run` the file is not read at all. Export them, or keep them out of the filesystem
+entirely:
+
+```bash
+cd backend/src/CarDealer.Api
+dotnet user-secrets set "AI:ApiKey" "<your key>"
+dotnet user-secrets set "AI:Provider" "groq"
+dotnet user-secrets set "AI:Model" "<the model id>"
+```
+
+User secrets live outside the repository, so they cannot be committed by accident. Note the
+single colon: that form is the configuration path itself, not the environment-variable spelling.
+
+**Check it took.** Rank any requirement and look at the response, or the screen: if
+`providerConfigured` is false, the application never saw the key, whatever the file says.
 
 For Groq you can leave `AI__BaseUrl` unset — it defaults to `https://api.groq.com/openai/v1`.
 For anything else OpenAI-shaped, set it to that endpoint.
