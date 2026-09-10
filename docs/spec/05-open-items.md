@@ -16,7 +16,7 @@ needs a named owner and a date — an item with neither is not tracked, it is fo
 | [O5](#o5--billing-metering-and-quotas) | Billing, metering and quotas | Product/Eng | Commercial launch | _unassigned_ | _unset_ |
 | [O6](#o6--observability-and-alerting) | Observability and alerting | Eng | Production | _unassigned_ | _unset_ |
 | [O7](#o7--whatsapp-24-hour-messaging-window) | WhatsApp 24-hour window | Eng | Phase 1 messaging | _unassigned_ | _unset_ |
-| [O8](#o8--publicid-coverage) | `PublicId` coverage | Eng | Phase 1 API | _unassigned_ | _unset_ |
+| ~~O8~~ | ~~`PublicId` coverage~~ | Eng | — | **Closed** | [D17](02-decisions.md#d17--top-level-route-identifiers-are-guids-nested-ones-may-be-integers) |
 | ~~O9~~ | ~~Phase 0 acceptance criteria~~ | Product | — | **Closed** | see [`06-`](06-phase-0-acceptance.md) |
 | [O10](#o10--destination-import-eligibility-rules) | Destination import-eligibility rules | Product/Legal | Phase 1 hard filters | _unassigned_ | _unset_ |
 | ~~O11~~ | ~~Saved-search alerting~~ | Product | — | **Closed** | Phase 1, see [O11](#o11--saved-search-alerting) |
@@ -144,15 +144,25 @@ on `Tenants`, `Users`, `Customers` and `Vehicles`, and absent on `CustomerRequir
 If `PublicId` is the external API identifier, those four entities would expose sequential `bigint`
 keys in API routes — enumerable, and a rough disclosure of record counts.
 
-**Decision needed:** either add `PublicId` to all externally addressable entities, or state
-explicitly that internal IDs are acceptable in API routes. The inconsistency is the problem; either
-answer is defensible.
+**Phase 1 made this worse before fixing it.** Two more integer-keyed routes were added —
+`/customers/{publicId}/notes/{noteId}` and `/duplicates/{id}/merge` — which is the argument for
+settling it: an unwritten convention decays one endpoint at a time.
 
-**Phase 1 made this worse rather than better.** Two more integer-keyed routes were added —
-`/customers/{publicId}/notes/{noteId}` and `/duplicates/{id}/merge` — so the mix now spans the
-CRM and the duplicate queue as well. Recorded in
-[`10-phase-1-acceptance.md` §G3](10-phase-1-acceptance.md#g-what-gates-phase-2). Settle this
-before more routes are added; each one raises the cost of whichever answer is chosen.
+**Closed** as decision [D17](02-decisions.md#d17--top-level-route-identifiers-are-guids-nested-ones-may-be-integers).
+Neither of the two answers this item offered was taken wholesale. The rule adopted turns on
+whether anything unguessable precedes the id:
+
+- **Top level** — `/duplicates/{id}` identifies a record by that id alone, so it can be walked,
+  and on a table shared by every tenant a sequential key also discloses the platform-wide volume.
+  These carry a `PublicId`. Added to `RequirementAlerts`, `VehicleMatchCandidates`,
+  `VehicleMergeHistory` and `Roles`; five routes changed.
+- **Nested** — `/customers/{publicId}/notes/3` cannot be reached without the customer's GUID, and
+  whoever holds it can already read every note there. `CustomerRequirements` and `CustomerNotes`
+  keep their integer keys deliberately, the same shape as
+  `/repos/{owner}/{repo}/issues/{number}`.
+
+Enforced by `RouteIdentifierTests` rather than by memory, including an assertion that the rule
+is exercised by routes of both shapes so it cannot pass vacuously.
 
 ## O9 — Phase 0 acceptance criteria
 

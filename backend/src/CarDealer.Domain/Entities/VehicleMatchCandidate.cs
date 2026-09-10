@@ -13,8 +13,19 @@ namespace CarDealer.Domain.Entities;
 /// wrong for every tenant simultaneously. No similarity threshold auto-merges, and none will
 /// until there is real multi-source data to tune against.
 /// </remarks>
-public class VehicleMatchCandidate : Entity
+public class VehicleMatchCandidate : Entity, IPubliclyAddressable
 {
+    /// <summary>
+    /// Stable external identifier, so the route never exposes the sequential key.
+    /// </summary>
+    /// <remarks>
+    /// Present because this entity is addressed at the <b>top level</b> of a route, where the
+    /// id is the only thing identifying the record - see decision D17. Entities reached through
+    /// a nested route keep their integer keys, because the parent's own PublicId already gates
+    /// access to them.
+    /// </remarks>
+    public Guid PublicId { get; set; }
+
     /// <summary>
     /// Always the lower of the two vehicle ids. Pairs are normalized before insert, otherwise
     /// every pair is stored twice and the unique constraint does not catch it

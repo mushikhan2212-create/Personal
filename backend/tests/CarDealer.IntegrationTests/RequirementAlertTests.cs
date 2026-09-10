@@ -222,7 +222,7 @@ public sealed class RequirementAlertTests : IClassFixture<ApiFactory>
         await ScanAsync(client);
 
         var alerts = await AlertsForAsync(client, m);
-        var id = alerts[0].GetProperty("id").GetInt64();
+        var id = alerts[0].GetProperty("id").GetGuid();
 
         var before = (await client.GetFromJsonAsync<JsonElement>("/api/v1/alerts/count"))
             .GetProperty("unseen").GetInt32();
@@ -256,7 +256,7 @@ public sealed class RequirementAlertTests : IClassFixture<ApiFactory>
 
         // And the other tenant cannot clear it either - a 404 rather than a 403, because
         // confirming the id exists would leak that somebody has a customer waiting for a car.
-        var id = mine[0].GetProperty("id").GetInt64();
+        var id = mine[0].GetProperty("id").GetGuid();
         var response = await karachi.PostAsync($"/api/v1/alerts/{id}/seen", null);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
@@ -266,7 +266,7 @@ public sealed class RequirementAlertTests : IClassFixture<ApiFactory>
 
         var stillUnseen = await db.RequirementAlerts
             .IgnoreQueryFilters()
-            .Where(a => a.Id == id)
+            .Where(a => a.PublicId == id)
             .Select(a => a.SeenAtUtc)
             .FirstAsync();
 

@@ -149,6 +149,10 @@ public class RequirementAlertConfiguration : IEntityTypeConfiguration<Requiremen
 
         builder.HasKey(a => a.Id);
 
+        // /alerts/{publicId}/seen is a top-level route (D17).
+        builder.Property(a => a.PublicId).IsRequired();
+        builder.HasIndex(a => a.PublicId).IsUnique();
+
         builder.Property(a => a.PriceBaseAtMatch).HasPrecision(18, 2);
         builder.Property(a => a.BaseCurrencyCode).HasMaxLength(3);
 

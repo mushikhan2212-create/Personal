@@ -29,6 +29,7 @@ Schema consequences are in [`04-schema-delta.md`](04-schema-delta.md).
 | [D14](#d14--every-account-is-a-tenant-including-a-solo-trader) | Every account is a tenant, including a solo trader | Accepted |
 | [D15](#d15--whatsapp-ships-as-a-click-to-chat-link-until-the-business-api-is-approved) | WhatsApp ships as a click-to-chat link until the Business API is approved | Accepted |
 | [D16](#d16--near-duplicates-are-suggested-never-merged) | Near-duplicates are suggested, never merged | Accepted |
+| [D17](#d17--top-level-route-identifiers-are-guids-nested-ones-may-be-integers) | Top-level route identifiers are GUIDs; nested ones may be integers | Accepted |
 
 ---
 
@@ -874,3 +875,59 @@ the next scan.
 **What stays open:** the 0.50 threshold is calibrated against one 104-record corpus of a single
 model. It is a starting point, and the constants carry their reasoning in `DuplicateScorer` so
 that re-tuning against a larger catalogue is an informed edit rather than a guess.
+
+---
+
+## D17 — Top-level route identifiers are GUIDs; nested ones may be integers
+
+**Status:** Accepted · **Closes:** [O8](05-open-items.md#o8--publicid-coverage)
+
+### Context
+
+O8 recorded that `PublicId` was on `Tenants`, `Users`, `Customers` and `Vehicles` and absent
+elsewhere, so some routes exposed unguessable identifiers and others exposed sequential keys. It
+asked for a decision either way and noted that both answers were defensible — **the
+inconsistency was the problem.**
+
+Phase 1 then made it worse without anyone noticing, adding
+`/customers/{publicId}/notes/{noteId}` and `/duplicates/{id}/merge`. That is the argument
+against leaving a convention unwritten: it does not hold, it decays one endpoint at a time.
+
+### Decision
+
+**A record addressed at the top level of a route carries a `PublicId`. A record reached through
+a nested route may keep its integer key.**
+
+The distinction is whether anything unguessable comes first. `/duplicates/{id}` identifies a
+record by that id alone, so the id can be walked. `/customers/{publicId}/notes/3` cannot be
+reached without the customer's GUID, and anybody holding that GUID can already read every note
+on that customer — guessing the child id discloses nothing they did not have. This is the shape
+GitHub uses for `/repos/{owner}/{repo}/issues/{number}`.
+
+So `PublicId` was added to `RequirementAlerts`, `VehicleMatchCandidates`, `VehicleMergeHistory`
+and `Roles`, and five routes now take a GUID. `CustomerRequirements` and `CustomerNotes` keep
+their integer keys, deliberately.
+
+Two supporting choices:
+
+- **The identifier is assigned in `SaveChangesAsync`, not at each `new`.** There were six
+  creation sites and the seventh is the one somebody forgets. A missed assignment is an
+  all-zeros GUID, which the unique index rejects only once a *second* row reaches it — that is,
+  in production rather than in a test.
+- **`Guid.NewGuid` (version 4), never `NEWSEQUENTIALID`.** A sequential GUID is guessable from
+  its neighbours, which would reintroduce exactly what this removes. The backfill migration uses
+  `NEWID()` for the same reason.
+
+### Consequences
+
+The primary key stays the `bigint`. `PublicId` is a non-clustered unique index beside it, so
+this costs an index per table and a lookup per request, not a clustered-key rewrite.
+
+The rule is enforced by `RouteIdentifierTests` rather than by memory: one test fails on a
+top-level integer route, one on a nested integer that is not behind a GUID, and a third asserts
+both shapes still exist so the first two cannot pass vacuously. Reverting a single route to
+`:long` was confirmed to fail the first with the offending route named.
+
+Internal ids are still fine in response bodies where they are not identifiers — a React key, or
+the `candidateId` recorded inside a merge's audit blob. This decision is about what appears in a
+URL.

@@ -48,10 +48,10 @@ public sealed class VehicleMergeService
     /// Merges the pair behind a candidate, returning the surviving vehicle.
     /// </summary>
     public async Task<MergeOutcome> MergeAsync(
-        long candidateId, long reviewerUserId, string? note, CancellationToken ct = default)
+        Guid candidatePublicId, long reviewerUserId, string? note, CancellationToken ct = default)
     {
         var candidate = await _db.VehicleMatchCandidates
-            .FirstOrDefaultAsync(c => c.Id == candidateId, ct)
+            .FirstOrDefaultAsync(c => c.PublicId == candidatePublicId, ct)
             .ConfigureAwait(false);
 
         if (candidate is null)
@@ -223,10 +223,12 @@ public sealed class VehicleMergeService
     /// the next run, which is how a review queue trains people to ignore it.
     /// </remarks>
     public async Task<bool> RejectAsync(
-        long candidateId, long reviewerUserId, CancellationToken ct = default)
+        Guid candidatePublicId, long reviewerUserId, CancellationToken ct = default)
     {
         var candidate = await _db.VehicleMatchCandidates
-            .FirstOrDefaultAsync(c => c.Id == candidateId && c.Status == MatchCandidateStatus.Pending, ct)
+            .FirstOrDefaultAsync(
+                c => c.PublicId == candidatePublicId
+                    && c.Status == MatchCandidateStatus.Pending, ct)
             .ConfigureAwait(false);
 
         if (candidate is null)
@@ -254,10 +256,10 @@ public sealed class VehicleMergeService
     /// reversing it.
     /// </remarks>
     public async Task<bool> RevertAsync(
-        long mergeHistoryId, long reviewerUserId, CancellationToken ct = default)
+        Guid mergePublicId, long reviewerUserId, CancellationToken ct = default)
     {
         var history = await _db.VehicleMergeHistories
-            .FirstOrDefaultAsync(h => h.Id == mergeHistoryId && h.RevertedAtUtc == null, ct)
+            .FirstOrDefaultAsync(h => h.PublicId == mergePublicId && h.RevertedAtUtc == null, ct)
             .ConfigureAwait(false);
 
         if (history is null || history.SurvivingVehicleId == history.MergedVehicleId)

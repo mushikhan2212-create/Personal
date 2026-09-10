@@ -79,7 +79,10 @@ public sealed class TenantIsolationTests : IClassFixture<ApiFactory>
         Assert.NotNull(roles);
 
         var systemRole = roles!.First(r => r.GetProperty("isSystemRole").GetBoolean());
-        var id = systemRole.GetProperty("id").GetInt64();
+
+        // A GUID since D17: /roles/{id} is a top-level route, so the id it hands out and takes
+        // back is the external one.
+        var id = systemRole.GetProperty("id").GetGuid();
 
         var response = await client.DeleteAsync($"/api/v1/roles/{id}");
 
@@ -88,7 +91,7 @@ public sealed class TenantIsolationTests : IClassFixture<ApiFactory>
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<CarDealerDbContext>();
 
-        var stillThere = await db.Roles.IgnoreQueryFilters().AnyAsync(r => r.Id == id);
+        var stillThere = await db.Roles.IgnoreQueryFilters().AnyAsync(r => r.PublicId == id);
         Assert.True(stillThere, "A system role must survive a tenant's delete attempt.");
     }
 

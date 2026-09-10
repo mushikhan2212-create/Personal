@@ -21,7 +21,7 @@ namespace CarDealer.Domain.Entities;
 /// deletion rather than a flag, so that whatever the answer turns out to be, erasing a customer
 /// erases them.
 /// </remarks>
-public class Customer : AuditableEntity, ITenantScoped
+public class Customer : AuditableEntity, ITenantScoped, IPubliclyAddressable
 {
     public long TenantId { get; set; }
 

@@ -11,7 +11,7 @@ namespace CarDealer.Domain.Entities;
 /// There is deliberately no TenantId here. Email is globally unique, so one person uses one
 /// login across every dealer they work for.
 /// </remarks>
-public class User : AuditableEntity
+public class User : AuditableEntity, IPubliclyAddressable
 {
     public Guid PublicId { get; set; }
 

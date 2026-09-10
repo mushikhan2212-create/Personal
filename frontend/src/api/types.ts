@@ -358,7 +358,8 @@ export interface CustomerImportResult {
 
 /** A car that turned up after a customer asked for it (open item O11). */
 export interface RequirementAlertItem {
-  id: number;
+  /** A GUID: /alerts/{id}/seen is a top-level route (decision D17). */
+  id: string;
   matchedAtUtc: string;
   /** Null until somebody has looked at it. */
   seenAtUtc: string | null;
@@ -444,7 +445,6 @@ export interface MessagePhoto {
  * One side of a suggested duplicate: enough of the car to judge it without leaving the queue.
  */
 export interface DuplicateSide {
-  id: number;
   publicId: string;
   make: string | null;
   model: string | null;
@@ -485,7 +485,8 @@ export interface DuplicateSignal {
 }
 
 export interface DuplicateCandidate {
-  id: number;
+  /** A GUID: this is addressed at the top level of a route (decision D17). */
+  id: string;
   /** 0 to 1. Nothing below 0.5 is ever written. */
   score: number;
   status: 'Pending' | 'Merged' | 'Rejected' | 'Unknown';
@@ -504,7 +505,8 @@ export interface DuplicateQueue {
 }
 
 export interface MergeRecord {
-  id: number;
+  /** A GUID, for the same reason as DuplicateCandidate. */
+  id: string;
   mergedAtUtc: string;
   revertedAtUtc: string | null;
   mergedBy: string | null;

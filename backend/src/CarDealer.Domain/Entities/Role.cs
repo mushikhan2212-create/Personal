@@ -11,8 +11,19 @@ namespace CarDealer.Domain.Entities;
 /// called "Sales Manager". The original schema's global unique constraint on Name made that
 /// impossible.
 /// </remarks>
-public class Role : Entity
+public class Role : Entity, IPubliclyAddressable
 {
+    /// <summary>
+    /// Stable external identifier, so the route never exposes the sequential key.
+    /// </summary>
+    /// <remarks>
+    /// Present because this entity is addressed at the <b>top level</b> of a route, where the
+    /// id is the only thing identifying the record - see decision D17. Entities reached through
+    /// a nested route keep their integer keys, because the parent's own PublicId already gates
+    /// access to them.
+    /// </remarks>
+    public Guid PublicId { get; set; }
+
     /// <summary>Null means a system role, which tenants may not edit or delete.</summary>
     public long? TenantId { get; set; }
 

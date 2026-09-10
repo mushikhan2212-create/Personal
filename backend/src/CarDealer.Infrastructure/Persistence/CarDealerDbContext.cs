@@ -246,6 +246,7 @@ public class CarDealerDbContext : DbContext
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         GuardGlobalCatalogWrites();
+        AssignPublicIds();
         ApplyTimestamps();
         return base.SaveChangesAsync(cancellationToken);
     }
@@ -253,8 +254,47 @@ public class CarDealerDbContext : DbContext
     public override int SaveChanges()
     {
         GuardGlobalCatalogWrites();
+        AssignPublicIds();
         ApplyTimestamps();
         return base.SaveChanges();
+    }
+
+    /// <summary>
+    /// Gives every new row that needs an external identifier one, if it has not got one.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than at each <c>new</c>, because there are six of those and the seventh is
+    /// the one somebody forgets - and a forgotten <c>PublicId</c> is an all-zeros GUID that
+    /// collides with the unique index only once a second row reaches it, which is to say in
+    /// production rather than in a test.
+    ///
+    /// <para>
+    /// <c>Guid.NewGuid</c> is version 4, so an identifier says nothing about its neighbours.
+    /// That is the property decision D17 is actually after: a sequential external key can be
+    /// walked, and on a table shared by every tenant it also discloses how much of it there is.
+    /// The cost is a non-clustered unique index rather than a clustered one, which is why the
+    /// primary key stays the bigint.
+    /// </para>
+    ///
+    /// <para>
+    /// An id supplied deliberately is left alone. The seed sets its own so that a re-run is
+    /// idempotent, and tests occasionally pin one to assert against.
+    /// </para>
+    /// </remarks>
+    private void AssignPublicIds()
+    {
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            if (entry.State != EntityState.Added || entry.Entity is not IPubliclyAddressable row)
+            {
+                continue;
+            }
+
+            if (row.PublicId == Guid.Empty)
+            {
+                row.PublicId = Guid.NewGuid();
+            }
+        }
     }
 
     private void ApplyTimestamps()

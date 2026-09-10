@@ -11,8 +11,19 @@ namespace CarDealer.Domain.Entities;
 /// surviving vehicle and the merged vehicle is set to Archived - never deleted. Recording
 /// which listings moved is what makes reversal possible.
 /// </remarks>
-public class VehicleMergeHistory : Entity
+public class VehicleMergeHistory : Entity, IPubliclyAddressable
 {
+    /// <summary>
+    /// Stable external identifier, so the route never exposes the sequential key.
+    /// </summary>
+    /// <remarks>
+    /// Present because this entity is addressed at the <b>top level</b> of a route, where the
+    /// id is the only thing identifying the record - see decision D17. Entities reached through
+    /// a nested route keep their integer keys, because the parent's own PublicId already gates
+    /// access to them.
+    /// </remarks>
+    public Guid PublicId { get; set; }
+
     public long SurvivingVehicleId { get; set; }
 
     public Vehicle SurvivingVehicle { get; set; } = null!;

@@ -129,11 +129,12 @@ model, so the first is not deferrable.
 | --- | --- | --- |
 | G1 | [O4](05-open-items.md#o4--pii-redaction-before-ai-calls) — PII redaction before AI calls | Every Phase 2 feature sends customer data somewhere. Nobody has decided what may leave. |
 | G2 | [O2](05-open-items.md#o2--carapis-licensing-gate) — Carapis licensing | Its own text says resolve **before Phase 1 starts**. It was not resolved and Phase 1 was built anyway. The architecture survives a "no"; the commercial exposure is real. |
-| G3 | [O8](05-open-items.md#o8--publicid-coverage) — `PublicId` coverage | Some routes expose GUIDs, others sequential integers. Phase 1 **added two more** integer-keyed routes (`/customers/{id}/notes/{noteId}`, `/duplicates/{id}/merge`), making the inconsistency worse rather than better. |
+| ~~G3~~ | ~~[O8](05-open-items.md#o8--publicid-coverage) — `PublicId` coverage~~ | **Closed** as [D17](02-decisions.md#d17--top-level-route-identifiers-are-guids-nested-ones-may-be-integers). Phase 1 first made this worse — two more integer-keyed routes — then settled it: top-level routes take a GUID, nested ones may keep an integer because the parent's GUID already gates them. Enforced by `RouteIdentifierTests`. |
 | G4 | WhatsApp Business API approval | Four of Phase 2's seven features need *inbound* messages, which D15's click-to-chat path structurally cannot see. Weeks of lead time; nothing has been applied for. |
 
-G3 is a defect this phase introduced. Either answer to O8 is defensible — the inconsistency is
-the problem — but it should be settled before more routes are added.
+G3 was a defect this phase introduced and has since been fixed; it is left in the table struck
+through rather than deleted, because a gate that was real and then closed is part of the record.
+G1, G2 and G4 remain open.
 
 ## X. What is not built
 
@@ -175,10 +176,12 @@ B3–B7, C1, C5–C8, D2, E1, E4, F5. The duplicate detection in §B was measure
 and 1 correctly declined.
 
 Decisions taken during Phase 1:
-[D15](02-decisions.md#d15--whatsapp-ships-as-a-click-to-chat-link-until-the-business-api-is-approved)
-and [D16](02-decisions.md#d16--near-duplicates-are-suggested-never-merged). Open items closed:
-[O11](05-open-items.md#o11--saved-search-alerting) and
-[O15](05-open-items.md#o15--near-duplicate-detection-without-a-strong-identifier).
+[D15](02-decisions.md#d15--whatsapp-ships-as-a-click-to-chat-link-until-the-business-api-is-approved),
+[D16](02-decisions.md#d16--near-duplicates-are-suggested-never-merged) and
+[D17](02-decisions.md#d17--top-level-route-identifiers-are-guids-nested-ones-may-be-integers).
+Open items closed: [O11](05-open-items.md#o11--saved-search-alerting),
+[O15](05-open-items.md#o15--near-duplicate-detection-without-a-strong-identifier) and
+[O8](05-open-items.md#o8--publicid-coverage).
 
 ### Known weakness in this document
 

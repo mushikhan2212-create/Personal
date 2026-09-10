@@ -122,6 +122,9 @@ public sealed class DuplicatesController : ControllerBase
             .Where(v => vehicleIds.Contains(v.Id))
             .Select(v => new
             {
+                // Kept out of the response: PublicId below is how a vehicle is addressed, and
+                // shipping the sequential key beside it hands out the thing D17 removes from
+                // routes. Id stays in the local dictionary only, to join the two sides up.
                 v.Id,
                 v.PublicId,
                 v.Make,
@@ -162,7 +165,7 @@ public sealed class DuplicatesController : ControllerBase
             .Where(c => byId.ContainsKey(c.VehicleId) && byId.ContainsKey(c.CandidateVehicleId))
             .Select(c => new
             {
-                id = c.Id,
+                id = c.PublicId,
                 score = c.Score,
                 status = c.Status.ToString(),
                 createdAtUtc = c.CreatedAtUtc,
@@ -218,13 +221,13 @@ public sealed class DuplicatesController : ControllerBase
     /// never deleted - which is what lets <c>revert</c> put it back. The surviving vehicle keeps
     /// the older of the two ids, because other records already point at it.
     /// </remarks>
-    [HttpPost("{id:long}/merge")]
+    [HttpPost("{publicId:guid}/merge")]
     [HasPermission(Permissions.VehiclesMerge)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Merge(
-        long id, [FromBody] MergeDecisionRequest? request, CancellationToken ct)
+        Guid publicId, [FromBody] MergeDecisionRequest? request, CancellationToken ct)
     {
         // A merge is attributed to whoever approved it - that attribution is half of what makes
         // the record worth keeping - so an unidentifiable caller is refused rather than written
@@ -237,7 +240,7 @@ public sealed class DuplicatesController : ControllerBase
         using var scope = _scopeFactory.CreateScope();
 
         var outcome = await Unscoped<VehicleMergeService>(scope)
-            .MergeAsync(id, userId, request?.Note, ct)
+            .MergeAsync(publicId, userId, request?.Note, ct)
             .ConfigureAwait(false);
 
         return outcome.Status switch
@@ -252,7 +255,7 @@ public sealed class DuplicatesController : ControllerBase
 
             MergeStatus.NotFound => NotFound(new ProblemDetails
             {
-                Title = $"No pending duplicate candidate with id {id}.",
+                Title = $"No pending duplicate candidate with id '{publicId}'.",
                 Status = StatusCodes.Status404NotFound,
             }),
 
@@ -277,11 +280,11 @@ public sealed class DuplicatesController : ControllerBase
     }
 
     /// <summary>Records that the two rows really are different cars.</summary>
-    [HttpPost("{id:long}/reject")]
+    [HttpPost("{publicId:guid}/reject")]
     [HasPermission(Permissions.VehiclesMerge)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Reject(long id, CancellationToken ct)
+    public async Task<IActionResult> Reject(Guid publicId, CancellationToken ct)
     {
         if (_currentUser.UserId is not { } userId)
         {
@@ -291,14 +294,14 @@ public sealed class DuplicatesController : ControllerBase
         using var scope = _scopeFactory.CreateScope();
 
         var rejected = await Unscoped<VehicleMergeService>(scope)
-            .RejectAsync(id, userId, ct)
+            .RejectAsync(publicId, userId, ct)
             .ConfigureAwait(false);
 
         return rejected
             ? NoContent()
             : NotFound(new ProblemDetails
             {
-                Title = $"No pending duplicate candidate with id {id}.",
+                Title = $"No pending duplicate candidate with id '{publicId}'.",
                 Status = StatusCodes.Status404NotFound,
             });
     }
@@ -322,7 +325,7 @@ public sealed class DuplicatesController : ControllerBase
             .Take(pageSize)
             .Select(h => new
             {
-                id = h.Id,
+                id = h.PublicId,
                 mergedAtUtc = h.MergedAtUtc,
                 revertedAtUtc = h.RevertedAtUtc,
                 mergedBy = h.MergedByUser == null ? null : h.MergedByUser.Email,
@@ -342,11 +345,11 @@ public sealed class DuplicatesController : ControllerBase
     }
 
     /// <summary>Undoes a merge, putting the archived vehicle and its listings back.</summary>
-    [HttpPost("merges/{id:long}/revert")]
+    [HttpPost("merges/{publicId:guid}/revert")]
     [HasPermission(Permissions.VehiclesMerge)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Revert(long id, CancellationToken ct)
+    public async Task<IActionResult> Revert(Guid publicId, CancellationToken ct)
     {
         if (_currentUser.UserId is not { } userId)
         {
@@ -356,14 +359,14 @@ public sealed class DuplicatesController : ControllerBase
         using var scope = _scopeFactory.CreateScope();
 
         var reverted = await Unscoped<VehicleMergeService>(scope)
-            .RevertAsync(id, userId, ct)
+            .RevertAsync(publicId, userId, ct)
             .ConfigureAwait(false);
 
         return reverted
             ? NoContent()
             : NotFound(new ProblemDetails
             {
-                Title = $"No reversible merge with id {id}.",
+                Title = $"No reversible merge with id '{publicId}'.",
                 Status = StatusCodes.Status404NotFound,
             });
     }

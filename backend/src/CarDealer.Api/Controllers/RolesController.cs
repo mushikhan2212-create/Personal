@@ -43,7 +43,8 @@ public sealed class RolesController : ControllerBase
         var roles = await _db.Roles
             .Select(r => new
             {
-                r.Id,
+                // The external identifier, so DELETE takes back what this handed out (D17).
+                Id = r.PublicId,
                 r.Name,
                 r.Description,
                 IsSystemRole = r.TenantId == null,
@@ -132,7 +133,8 @@ public sealed class RolesController : ControllerBase
             new { role.Name, permissions = request.PermissionCodes },
             ct).ConfigureAwait(false);
 
-        return CreatedAtAction(nameof(List), new { version = "1.0" }, new { role.Id, role.Name });
+        return CreatedAtAction(
+            nameof(List), new { version = "1.0" }, new { Id = role.PublicId, role.Name });
     }
 
     /// <summary>Deletes a tenant-defined role.</summary>
@@ -141,14 +143,16 @@ public sealed class RolesController : ControllerBase
     /// makes system roles visible, so the check below is what stops the deletion - visibility
     /// and mutability are not the same permission.
     /// </remarks>
-    [HttpDelete("{id:long}")]
+    [HttpDelete("{publicId:guid}")]
     [HasPermission(Permissions.RolesManage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Delete(long id, CancellationToken ct)
+    public async Task<IActionResult> Delete(Guid publicId, CancellationToken ct)
     {
-        var role = await _db.Roles.FirstOrDefaultAsync(r => r.Id == id, ct).ConfigureAwait(false);
+        var role = await _db.Roles
+            .FirstOrDefaultAsync(r => r.PublicId == publicId, ct)
+            .ConfigureAwait(false);
 
         if (role is null)
         {
@@ -174,7 +178,10 @@ public sealed class RolesController : ControllerBase
             tenantId,
             _currentUser.UserId,
             nameof(Role),
-            id.ToString(),
+
+            // The public identifier, not the sequential one: the role row is gone by the time
+            // anybody reads this, so the audit entry has to carry the handle the caller used.
+            publicId.ToString(),
             ct: ct).ConfigureAwait(false);
 
         return NoContent();

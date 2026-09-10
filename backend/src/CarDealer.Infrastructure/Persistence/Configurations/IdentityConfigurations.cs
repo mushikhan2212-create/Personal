@@ -93,6 +93,13 @@ public class RoleConfiguration : IEntityTypeConfiguration<Role>
         builder.ToTable("Roles");
         builder.HasKey(x => x.Id);
 
+        // DELETE /roles/{publicId} is a top-level route (D17). System roles are global
+        // rows shared by every tenant, so a sequential id here leaks nothing about one
+        // tenant in particular - but the rule is the rule, and an exception is exactly
+        // the inconsistency open item O8 was raised about.
+        builder.Property(x => x.PublicId).IsRequired();
+        builder.HasIndex(x => x.PublicId).IsUnique();
+
         builder.Property(x => x.Name).HasMaxLength(100).IsRequired();
         builder.Property(x => x.Description).HasMaxLength(256);
         builder.Property(x => x.CreatedAtUtc).HasPrecision(3).IsRequired();

@@ -107,6 +107,20 @@ public sealed class DuplicateDetectionTests : IClassFixture<ApiFactory>
         return (source.Id, [.. ids]);
     }
 
+    /// <summary>The external identifiers of the seeded vehicles, in the order they were made.</summary>
+    private async Task<Guid[]> PublicIdsOf(long[] ids)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CarDealerDbContext>();
+
+        var map = await db.Vehicles
+            .IgnoreQueryFilters()
+            .Where(v => ids.Contains(v.Id))
+            .ToDictionaryAsync(v => v.Id, v => v.PublicId);
+
+        return [.. ids.Select(i => map[i])];
+    }
+
     private async Task<DuplicateScanResult> ScanAsync()
     {
         using var scope = _factory.Services.CreateScope();
@@ -284,7 +298,7 @@ public sealed class DuplicateDetectionTests : IClassFixture<ApiFactory>
         Assert.NotNull(candidate);
 
         var client = await _factory.AuthenticatedClientAsync("owner@nihon-motors.test");
-        var rejected = await client.PostAsync($"/api/v1/duplicates/{candidate.Id}/reject", null);
+        var rejected = await client.PostAsync($"/api/v1/duplicates/{candidate.PublicId}/reject", null);
         Assert.Equal(HttpStatusCode.NoContent, rejected.StatusCode);
 
         await ScanAsync();
@@ -309,7 +323,7 @@ public sealed class DuplicateDetectionTests : IClassFixture<ApiFactory>
         var client = await _factory.AuthenticatedClientAsync("owner@nihon-motors.test");
 
         var response = await client.PostAsJsonAsync(
-            $"/api/v1/duplicates/{candidate.Id}/merge", new { note = "Same car, two feeds." });
+            $"/api/v1/duplicates/{candidate.PublicId}/merge", new { note = "Same car, two feeds." });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -356,9 +370,9 @@ public sealed class DuplicateDetectionTests : IClassFixture<ApiFactory>
         Assert.NotNull(candidate);
 
         var client = await _factory.AuthenticatedClientAsync("owner@nihon-motors.test");
-        await client.PostAsJsonAsync($"/api/v1/duplicates/{candidate.Id}/merge", new { });
+        await client.PostAsJsonAsync($"/api/v1/duplicates/{candidate.PublicId}/merge", new { });
 
-        long mergeId;
+        Guid mergeId;
 
         using (var scope = _factory.Services.CreateScope())
         {
@@ -366,7 +380,7 @@ public sealed class DuplicateDetectionTests : IClassFixture<ApiFactory>
 
             mergeId = await db.VehicleMergeHistories
                 .Where(h => h.MergedVehicleId == ids[1] && h.SurvivingVehicleId == ids[0])
-                .Select(h => h.Id)
+                .Select(h => h.PublicId)
                 .FirstAsync();
         }
 
@@ -409,8 +423,8 @@ public sealed class DuplicateDetectionTests : IClassFixture<ApiFactory>
 
         var client = await _factory.AuthenticatedClientAsync("owner@nihon-motors.test");
 
-        var first = await client.PostAsJsonAsync($"/api/v1/duplicates/{candidate.Id}/merge", new { });
-        var second = await client.PostAsJsonAsync($"/api/v1/duplicates/{candidate.Id}/merge", new { });
+        var first = await client.PostAsJsonAsync($"/api/v1/duplicates/{candidate.PublicId}/merge", new { });
+        var second = await client.PostAsJsonAsync($"/api/v1/duplicates/{candidate.PublicId}/merge", new { });
 
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
@@ -438,11 +452,11 @@ public sealed class DuplicateDetectionTests : IClassFixture<ApiFactory>
 
         Assert.Equal(
             HttpStatusCode.Forbidden,
-            (await client.PostAsJsonAsync($"/api/v1/duplicates/{candidate.Id}/merge", new { })).StatusCode);
+            (await client.PostAsJsonAsync($"/api/v1/duplicates/{candidate.PublicId}/merge", new { })).StatusCode);
 
         Assert.Equal(
             HttpStatusCode.Forbidden,
-            (await client.PostAsync($"/api/v1/duplicates/{candidate.Id}/reject", null)).StatusCode);
+            (await client.PostAsync($"/api/v1/duplicates/{candidate.PublicId}/reject", null)).StatusCode);
     }
 
     [Fact]
@@ -457,9 +471,11 @@ public sealed class DuplicateDetectionTests : IClassFixture<ApiFactory>
         var client = await _factory.AuthenticatedClientAsync("owner@nihon-motors.test");
         var body = await client.GetFromJsonAsync<JsonElement>("/api/v1/duplicates?pageSize=100");
 
+        var publicIds = await PublicIdsOf(ids);
+
         var mine = body.GetProperty("items").EnumerateArray().FirstOrDefault(i =>
-            i.GetProperty("left").GetProperty("id").GetInt64() == ids[0]
-            && i.GetProperty("right").GetProperty("id").GetInt64() == ids[1]);
+            i.GetProperty("left").GetProperty("publicId").GetGuid() == publicIds[0]
+            && i.GetProperty("right").GetProperty("publicId").GetGuid() == publicIds[1]);
 
         Assert.NotEqual(JsonValueKind.Undefined, mine.ValueKind);
 
@@ -486,14 +502,17 @@ public sealed class DuplicateDetectionTests : IClassFixture<ApiFactory>
         await ScanAsync();
 
         var client = await _factory.AuthenticatedClientAsync("owner@nihon-motors.test");
+        var publicIds = await PublicIdsOf(ids);
 
         async Task<int> MineInQueue()
         {
             var body = await client.GetFromJsonAsync<JsonElement>("/api/v1/duplicates?pageSize=100");
 
+            // Matched on publicId: the response deliberately no longer carries the sequential
+            // vehicle key beside it (D17).
             return body.GetProperty("items").EnumerateArray().Count(i =>
-                ids.Contains(i.GetProperty("left").GetProperty("id").GetInt64())
-                && ids.Contains(i.GetProperty("right").GetProperty("id").GetInt64()));
+                publicIds.Contains(i.GetProperty("left").GetProperty("publicId").GetGuid())
+                && publicIds.Contains(i.GetProperty("right").GetProperty("publicId").GetGuid()));
         }
 
         Assert.Equal(3, await MineInQueue());
@@ -501,7 +520,7 @@ public sealed class DuplicateDetectionTests : IClassFixture<ApiFactory>
         var first = await CandidateFor(ids[0], ids[1]);
         Assert.NotNull(first);
 
-        await client.PostAsJsonAsync($"/api/v1/duplicates/{first.Id}/merge", new { });
+        await client.PostAsJsonAsync($"/api/v1/duplicates/{first.PublicId}/merge", new { });
 
         // (0,1) is merged and (1,2) points at the archived car, so only (0,2) is left to ask.
         Assert.Equal(1, await MineInQueue());
@@ -593,7 +612,7 @@ public sealed class DuplicateDetectionTests : IClassFixture<ApiFactory>
         var candidate = await CandidateFor(ids[0], ids[1]);
         Assert.NotNull(candidate);
 
-        await client.PostAsJsonAsync($"/api/v1/duplicates/{candidate.Id}/merge", new { });
+        await client.PostAsJsonAsync($"/api/v1/duplicates/{candidate.PublicId}/merge", new { });
 
         using (var scope = _factory.Services.CreateScope())
         {

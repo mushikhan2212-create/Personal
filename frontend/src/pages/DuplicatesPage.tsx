@@ -40,7 +40,7 @@ export function DuplicatesPage({ onOpenVehicle, onChanged }: Props) {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<number | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [merges, setMerges] = useState<MergeRecord[] | null>(null);
 
@@ -62,7 +62,7 @@ export function DuplicatesPage({ onOpenVehicle, onChanged }: Props) {
 
   useEffect(() => { void load(page, view); }, [load, page, view]);
 
-  const act = async (id: number, what: 'merge' | 'reject'): Promise<void> => {
+  const act = async (id: string, what: 'merge' | 'reject'): Promise<void> => {
     setBusy(id);
 
     try {
@@ -444,9 +444,9 @@ function MergeHistory({ merges, onClose, onReverted }: {
   onReverted: () => Promise<void>;
 }) {
   const { message } = AntApp.useApp();
-  const [busy, setBusy] = useState<number | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
 
-  const undo = async (id: number): Promise<void> => {
+  const undo = async (id: string): Promise<void> => {
     setBusy(id);
 
     try {

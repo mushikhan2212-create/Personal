@@ -3,7 +3,7 @@ using CarDealer.Domain.Enums;
 
 namespace CarDealer.Domain.Entities;
 
-public class Tenant : AuditableEntity
+public class Tenant : AuditableEntity, IPubliclyAddressable
 {
     public Guid PublicId { get; set; }
 

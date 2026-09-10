@@ -83,7 +83,9 @@ public sealed class AlertsController : ControllerBase
             .Take(size)
             .Select(a => new
             {
-                a.Id,
+                // The external identifier, so the inbox posts back a GUID rather than a
+                // sequential key (D17).
+                Id = a.PublicId,
                 a.MatchedAtUtc,
                 a.SeenAtUtc,
                 a.PriceBaseAtMatch,
@@ -132,14 +134,14 @@ public sealed class AlertsController : ControllerBase
     /// tells colleagues it has been dealt with, and someone with read-only access clearing
     /// somebody else's queue is not a read.
     /// </remarks>
-    [HttpPost("{id:long}/seen")]
+    [HttpPost("{publicId:guid}/seen")]
     [HasPermission(Permissions.CustomersManage)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> MarkSeen(long id, CancellationToken ct)
+    public async Task<IActionResult> MarkSeen(Guid publicId, CancellationToken ct)
     {
         var alert = await _db.RequirementAlerts
-            .FirstOrDefaultAsync(a => a.Id == id, ct)
+            .FirstOrDefaultAsync(a => a.PublicId == publicId, ct)
             .ConfigureAwait(false);
 
         if (alert is null)
@@ -148,7 +150,7 @@ public sealed class AlertsController : ControllerBase
             // leak that somebody else has a customer waiting for a particular car.
             return NotFound(new ProblemDetails
             {
-                Title = $"No alert with id {id}.",
+                Title = $"No alert with id '{publicId}'.",
                 Status = StatusCodes.Status404NotFound,
             });
         }
@@ -156,7 +158,7 @@ public sealed class AlertsController : ControllerBase
         Stamp(alert);
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);
 
-        return Ok(new { alert.Id, alert.SeenAtUtc });
+        return Ok(new { id = alert.PublicId, alert.SeenAtUtc });
     }
 
     /// <summary>Marks every unseen alert as seen.</summary>

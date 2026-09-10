@@ -25,7 +25,7 @@ namespace CarDealer.Domain.Entities;
 /// master prompt section 8 requires the POC to measure completeness. That measurement is
 /// what tells us which fields are real.
 /// </remarks>
-public class Vehicle : AuditableEntity, IOptionallyTenantScoped
+public class Vehicle : AuditableEntity, IOptionallyTenantScoped, IPubliclyAddressable
 {
     /// <summary>Null = global catalog row. Non-null = one tenant's private inventory.</summary>
     public long? TenantId { get; set; }

@@ -397,6 +397,12 @@ public class VehicleMatchCandidateConfiguration : IEntityTypeConfiguration<Vehic
         builder.ToTable("VehicleMatchCandidates");
         builder.HasKey(x => x.Id);
 
+        // Addressed at the top level of a route, so the id in the URL must not be the
+        // sequential key (D17). This table is global rather than tenant-scoped, so a
+        // sequential id would also disclose the platform-wide volume of suggestions.
+        builder.Property(x => x.PublicId).IsRequired();
+        builder.HasIndex(x => x.PublicId).IsUnique();
+
         builder.Property(x => x.Score).HasPrecision(5, 4).IsRequired();
         builder.Property(x => x.Status).HasConversion<byte>().IsRequired();
         builder.Property(x => x.ReviewedAtUtc).HasPrecision(3);
@@ -435,6 +441,10 @@ public class VehicleMergeHistoryConfiguration : IEntityTypeConfiguration<Vehicle
     {
         builder.ToTable("VehicleMergeHistory");
         builder.HasKey(x => x.Id);
+
+        // Reached through /duplicates/merges/{publicId}/revert - top level, so D17 applies.
+        builder.Property(x => x.PublicId).IsRequired();
+        builder.HasIndex(x => x.PublicId).IsUnique();
 
         builder.Property(x => x.MergedAtUtc).HasPrecision(3).IsRequired();
         builder.Property(x => x.RevertedAtUtc).HasPrecision(3);

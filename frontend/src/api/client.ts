@@ -369,7 +369,7 @@ export const listAlerts = (
   request<AlertListResponse>(
     `/alerts?unseenOnly=${unseenOnly}&page=${page}&pageSize=${pageSize}`);
 
-export const markAlertSeen = (id: number): Promise<unknown> =>
+export const markAlertSeen = (id: string): Promise<unknown> =>
   request(`/alerts/${id}/seen`, { method: 'POST' });
 
 export const markAllAlertsSeen = (): Promise<{ marked: number }> =>
@@ -434,7 +434,7 @@ export const listDuplicates = (
   request(`/duplicates?status=${status}&page=${page}&pageSize=${pageSize}`);
 
 /** Confirms two rows are one car. The duplicate's offers move onto the survivor. */
-export const mergeDuplicate = (id: number, note?: string): Promise<{
+export const mergeDuplicate = (id: string, note?: string): Promise<{
   survivingVehicleId: string;
   archivedVehicleId: string;
   listingsMoved: number;
@@ -444,13 +444,13 @@ export const mergeDuplicate = (id: number, note?: string): Promise<{
   body: JSON.stringify({ note }),
 });
 
-export const rejectDuplicate = (id: number): Promise<void> =>
+export const rejectDuplicate = (id: string): Promise<void> =>
   request(`/duplicates/${id}/reject`, { method: 'POST' });
 
 export const listMerges = (): Promise<{ items: MergeRecord[] }> =>
   request('/duplicates/merges');
 
-export const revertMerge = (id: number): Promise<void> =>
+export const revertMerge = (id: string): Promise<void> =>
   request(`/duplicates/merges/${id}/revert`, { method: 'POST' });
 
 /** Runs the scan now rather than waiting for the nightly job. Idempotent. */
