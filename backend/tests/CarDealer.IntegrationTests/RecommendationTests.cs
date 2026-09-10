@@ -497,4 +497,93 @@ public sealed class RecommendationTests : IClassFixture<ApiFactory>
         Assert.DoesNotContain("Sheikh", payload);
         Assert.DoesNotContain("+92", payload);
     }
+
+    [Fact]
+    public async Task A_car_that_only_just_meets_a_limit_goes_last_however_the_model_ranked_it()
+    {
+        // The broker's rule, end to end. The model is scripted to put the car nearest the
+        // customer's mileage ceiling first - which is what real models did, three prompt
+        // revisions running - and it has to come back last anyway.
+        var m = Marker();
+        var (factory, provider) = WithScripted();
+        using var _ = factory;
+
+        RankingRequest? seen = null;
+
+        provider.Answer = request =>
+        {
+            seen = request;
+            return Reversed(request);
+        };
+
+        var client = await SignedInAsync(factory, "owner@nihon-motors.test");
+        var (customer, requirement, _) = await ScenarioAsync(client, m);
+
+        // 95,000 makes the 91,000 km car tight and leaves the other two comfortable. It is also
+        // the dearest of the three, so nothing here can pass by accident on price order.
+        var updated = await client.PutAsJsonAsync(
+            $"/api/v1/customers/{customer}/requirements/{requirement}",
+            new { name = "Corolla wanted", make = $"{m}Toyota", maxMileage = 95_000 });
+
+        updated.EnsureSuccessStatusCode();
+
+        var result = await RankAsync(client, customer, requirement, refresh: true);
+
+        Assert.Equal("Ai", result.GetProperty("source").GetString());
+
+        // The model was told, so it can say so in the reasons.
+        Assert.NotNull(seen);
+        Assert.Equal(1, seen!.Candidates.Count(c => c.CloseToTheirLimits == true));
+        Assert.Equal(91_000, seen.Candidates.Single(c => c.CloseToTheirLimits == true).Mileage);
+
+        var items = result.GetProperty("items").EnumerateArray().ToList();
+        Assert.Equal(3, items.Count);
+
+        static int Mileage(JsonElement item)
+            => item.GetProperty("vehicle").GetProperty("mileage").GetInt32();
+
+        // Reversed sends it back at rank 1; it is shown at rank 3.
+        Assert.Equal(91_000, Mileage(items[2]));
+        Assert.Equal(3, items[2].GetProperty("rank").GetInt32());
+
+        // And the two that fit comfortably keep the order the model chose for them, rather than
+        // being re-sorted into something the code preferred.
+        Assert.Equal([48_000, 62_620], items.Take(2).Select(Mileage));
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CarDealerDbContext>();
+
+        // Stored as shown, not as answered: what a salesperson saw is the thing worth keeping.
+        var stored = await db.VehicleRecommendations.IgnoreQueryFilters()
+            .Where(r => r.CustomerRequirementId == requirement)
+            .OrderBy(r => r.Rank)
+            .Select(r => r.Vehicle!.Mileage)
+            .ToListAsync();
+
+        Assert.Equal([48_000, 62_620, 91_000], stored);
+    }
+
+    [Fact]
+    public async Task With_no_limits_stated_the_models_order_stands()
+    {
+        // The other half of the rule, and the one that stops it being a sort. A customer who
+        // named no ceiling has nothing for the bands to separate, so nothing may move.
+        var m = Marker();
+        var (factory, provider) = WithScripted();
+        using var _ = factory;
+
+        provider.Answer = Reversed;
+
+        var client = await SignedInAsync(factory, "owner@nihon-motors.test");
+        var (customer, requirement, _) = await ScenarioAsync(client, m);
+
+        var result = await RankAsync(client, customer, requirement);
+
+        var mileages = result.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("vehicle").GetProperty("mileage").GetInt32())
+            .ToList();
+
+        // Cheapest-first is 62,620 / 48,000 / 91,000; Reversed is exactly that backwards.
+        Assert.Equal([91_000, 48_000, 62_620], mileages);
+    }
 }

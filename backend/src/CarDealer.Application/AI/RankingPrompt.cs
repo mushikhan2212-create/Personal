@@ -27,7 +27,7 @@ namespace CarDealer.Application.AI;
 public static class RankingPrompt
 {
     /// <summary>Bump on any change to the instructions or the schema below.</summary>
-    public const string Version = "rank-v5";
+    public const string Version = "rank-v6";
 
     /// <summary>
     /// The standing instructions. Stable across calls, which is what makes it cacheable.
@@ -56,10 +56,10 @@ public static class RankingPrompt
         5. Cheapest first, among cars that fit equally well. Price is what the broker would
            quote: the retail price where a car has one, and the source price where it does not.
            Where two cars cost the same, prefer the lower mileage, then the newer.
-        6. Passing a limit is not the same as fitting it. A car just under the customer's
-           mileage ceiling or at the oldest year they accepted fits worse than one comfortably
-           inside, so rank it below - even though it is cheaper and even though it passed. Only
-           cars that sit comfortably inside every limit compete on price alone.
+        6. Some cars are marked as close to the customer's limits: they only just satisfy
+           something the customer set, being just under the mileage ceiling or at the oldest
+           year they would take. Say so in that car's reasons. You do not need to move it - the
+           broker's rule about limits is applied to your ordering afterwards.
         7. A vehicle offered by more than one source is more likely to still be available. That
            is weak evidence about availability only - it says nothing about condition.
         8. Reasons are for the broker, not the customer. Write two or three short phrases, no
@@ -67,7 +67,8 @@ public static class RankingPrompt
            "a fantastic opportunity" is not. Write plain English and never name a field from
            the data you were given - not minYear, maxPrice, offerCount, fuelType or any other.
            Say what it means: "3 sources list it", not "offerCount 3"; "within the years they
-           asked for", not "meets minYear"; "under their budget", not "under maxPrice".
+           asked for", not "meets minYear"; "under their budget", not "under maxPrice"; "close
+           to the mileage they asked for", not "closeToTheirLimits".
 
         Score each vehicle from 0 to 1 for how well it fits the requirement. Rank 1 is the best
         fit. Ranks must run 1, 2, 3 with no gaps and no repeats.

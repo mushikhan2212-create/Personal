@@ -106,19 +106,33 @@ public sealed class RecommendationService
         bool refresh,
         CancellationToken ct = default)
     {
+        // Fetched to the ceiling rather than to the send limit, because the shortlist below is
+        // chosen by fit. A SQL page of the cheapest would have thrown the well-fitting cars away
+        // before anything could prefer them - which on a rate-limited tier sending five cars is
+        // the difference between a shortlist and the five nearest the customer's limits.
         var found = await _search
-            .SearchAsync(query with { Page = 1, PageSize = _maxCandidates }, ct)
+            .SearchAsync(query with { Page = 1, PageSize = CandidateCeiling }, ct)
             .ConfigureAwait(false);
 
-        var hits = found.Hits;
-
-        if (hits.Count == 0)
+        if (found.Hits.Count == 0)
         {
             return new RankingOutcome([], RecommendationSource.Deterministic, null, false);
         }
 
         var brief = Brief(requirement);
-        var candidates = hits.Select(Candidate).ToList();
+
+        // Cars that sit comfortably inside every limit first, cheapest within that, and the
+        // shortlist taken off the top. This is also what the fallback shows, so the broker's
+        // rule holds whether or not a model ever answers. See FitBands.
+        var shortlist = FitBands
+            .ComfortableFirst(
+                found.Hits.Select(h => (Hit: h, Candidate: FitBands.Flag(brief, Candidate(h)))),
+                x => x.Candidate)
+            .Take(_maxCandidates)
+            .ToList();
+
+        var hits = shortlist.Select(x => x.Hit).ToList();
+        var candidates = shortlist.Select(x => x.Candidate).ToList();
         var request = new RankingRequest { Requirement = brief, Candidates = candidates };
         var hash = Fingerprint(brief, candidates);
 
@@ -134,7 +148,7 @@ public sealed class RecommendationService
 
         if (!_ai.IsConfigured)
         {
-            return Fallback(hits, "No AI provider is configured, so these are in price order.");
+            return Fallback(hits, "No AI provider is configured");
         }
 
         var audit = new AIRequest
@@ -204,28 +218,49 @@ public sealed class RecommendationService
             return Fallback(hits, $"The ranking was not used: {rejection}");
         }
 
+        // The broker's rule about limits, applied to the model's ordering rather than asked of
+        // it. Three prompt revisions failed to make it stick and it is not a preference that
+        // should change when somebody edits a model id, so it lives in code. See FitBands.
+        var ordered = FitBands.Apply(candidates, result.Ranked!);
+
         audit.Status = AIRequestStatus.Succeeded;
+
+        // The provider's own answer, not the reordered one. This column is the record of what
+        // was paid for; the order a person actually saw is in VehicleRecommendations, and
+        // keeping the two distinct is what makes the reordering auditable at all.
         audit.OutputMetadataJson = JsonSerializer.Serialize(result.Ranked);
 
-        await PersistAsync(requirement, hits, result.Ranked!, audit, ct).ConfigureAwait(false);
+        await PersistAsync(requirement, hits, ordered, audit, ct).ConfigureAwait(false);
 
         var byId = hits.ToDictionary(h => h.PublicId);
 
-        var entries = result.Ranked!
-            .OrderBy(r => r.Rank)
+        var entries = ordered
             .Select(r => new RankedEntry(byId[r.Id], r.Rank, r.Score, [.. r.Reasons]))
             .ToList();
 
         return new RankingOutcome(entries, RecommendationSource.Ai, null, false);
     }
 
-    /// <summary>The deterministic order, which is what the matches screen shows today.</summary>
-    private static RankingOutcome Fallback(IReadOnlyList<VehicleSearchHit> hits, string notice)
-        => new(
+    /// <summary>
+    /// The deterministic order, which is what the matches screen shows today.
+    /// </summary>
+    /// <remarks>
+    /// The hits arrive already banded, so the fallback obeys the same limit rule the ranking
+    /// does. That is deliberate: a fallback that contradicted the ranking would teach the
+    /// broker that the ordering means one thing when the model answers and another when it
+    /// does not.
+    /// </remarks>
+    private static RankingOutcome Fallback(IReadOnlyList<VehicleSearchHit> hits, string why)
+    {
+        var reason = why.TrimEnd();
+
+        return new(
             [.. hits.Select((h, i) => new RankedEntry(h, i + 1, 0m, []))],
             RecommendationSource.Deterministic,
-            notice,
+            $"{(reason.EndsWith('.') ? reason : reason + ".")} These are in price order, with "
+                + "anything that only just meets the customer's limits last.",
             false);
+    }
 
     /// <summary>A stored answer to this exact question, if there is one.</summary>
     private async Task<RankingOutcome?> StoredAsync(

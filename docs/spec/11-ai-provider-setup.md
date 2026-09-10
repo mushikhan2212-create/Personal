@@ -5,6 +5,18 @@ to do when you have a key.
 
 The feature works before you do any of this — it falls back to price order and says so on screen.
 
+## What the model does *not* decide
+
+One rule about the ordering is applied in code rather than asked of the model. A car that only
+just satisfies a limit you set — within a tenth of the mileage ceiling, or exactly at the oldest
+year accepted — is placed after the cars that sit comfortably inside, even when it is cheaper.
+Within each of those two groups the model's own ordering stands untouched, and if nobody named a
+ceiling nothing moves at all.
+
+This holds whether or not a provider is configured, so the fallback list and the ranked list mean
+the same thing. The reasoning, the trade-offs, and the one case where you might want it changed
+are in [D19](02-decisions.md#d19--a-preference-the-broker-states-is-code-not-a-sentence-in-the-prompt).
+
 ## 1. Put the key somewhere it will never reach git
 
 Three options, any of which works. **Never `appsettings.json` or `appsettings.Development.json`**:
@@ -51,6 +63,12 @@ ordering is a judgement rather than a sort.
 
 It prints, per model: whether the answer survived the guards, how long it took, tokens in and out,
 and **the top three of its actual ordering with the reasons it gave**.
+
+Cars marked `[near a limit]` only just satisfy something the customer set — within a tenth of the
+mileage ceiling, or at the oldest year they accepted. Those are placed after the ones that do not
+by the application, not by the model ([D19](02-decisions.md#d19--a-preference-the-broker-states-is-code-not-a-sentence-in-the-prompt)),
+so judge a model on the order **within** each group, and on whether its reasons mention the flag
+at all.
 
 To check specific models instead:
 
@@ -108,6 +126,11 @@ AI__MaxCandidates=5
 Five cars is still a shortlist and still worth ordering. Raise it when the tier does; the code
 clamps anything above 40, because a typo in a config file should not send the whole catalogue to
 a model.
+
+**Which five it sends is chosen by fit, not by price.** The catalogue query fetches up to the
+clamp of 40, then the cars comfortably inside every limit are taken first. Otherwise a dealer on
+a small tier would send the five cheapest — which, on a requirement with a mileage ceiling, is
+often the five nearest to it.
 
 `AI__MaxTokens` (default 8,000) is the other half of the same arithmetic. Some models reject a
 value above their own context ceiling — one on this account caps at 4,096 — so lower it if a

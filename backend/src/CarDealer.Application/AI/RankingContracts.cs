@@ -121,6 +121,20 @@ public sealed record CandidateVehicle
     /// <summary>How many sources offer this car - evidence of availability, not of quality.</summary>
     public int OfferCount { get; init; } = 1;
 
+    /// <summary>
+    /// True when this car only just satisfies a limit the customer set.
+    /// </summary>
+    /// <remarks>
+    /// Computed by <see cref="FitBands"/> before the request goes out, so the model is told the
+    /// fact rather than asked to work it out. Null rather than false when the car fits
+    /// comfortably: the payload drops nulls, so an unflagged car costs no tokens at all.
+    ///
+    /// It carries no weight in the ordering the model returns - the same flag is applied
+    /// afterwards, in code. It is here so the reasons can mention it, which is what a broker
+    /// reading them actually needs to see.
+    /// </remarks>
+    public bool? CloseToTheirLimits { get; init; }
+
     /// <summary>Every number this car states, for grounding the model's reasons against.</summary>
     public IEnumerable<decimal> Numbers()
     {

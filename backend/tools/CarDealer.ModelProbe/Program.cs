@@ -57,7 +57,9 @@ if (models.Count == 0)
     return 1;
 }
 
-var request = SampleRequest();
+// Flagged exactly as the application flags one, because the flag is part of the payload the
+// model reads. Probing an unflagged request would measure a prompt nobody sends.
+var request = FitBands.Flag(SampleRequest());
 
 Console.WriteLine();
 Console.WriteLine($"Probing {models.Count} model(s) against the real ranking task.");
@@ -146,12 +148,17 @@ foreach (var r in usable)
 
     // Printed because latency and token counts say nothing about whether the ordering is
     // sensible, and that is the half only a person in this trade can judge.
-    foreach (var entry in r.Answer.Ranked!.OrderBy(e => e.Rank).Take(3))
+    //
+    // Shown after FitBands, which is what a salesperson would actually see. The model's own
+    // order is no longer the final word, and printing it as though it were would put this tool
+    // back to measuring something the product does not do.
+    foreach (var entry in FitBands.Apply(request.Candidates, r.Answer.Ranked!).Take(3))
     {
         var car = request.Candidates.First(c => c.Id == entry.Id);
+        var band = car.CloseToTheirLimits == true ? " [near a limit]" : string.Empty;
 
         Console.WriteLine(
-            $"        #{entry.Rank} {car.Year} {car.Model} {car.Mileage:N0} km "
+            $"        #{entry.Rank} {car.Year} {car.Model} {car.Mileage:N0} km{band} "
             + $"- {string.Join("; ", entry.Reasons)}");
     }
 
@@ -160,6 +167,10 @@ foreach (var r in usable)
 
 Console.WriteLine("Read the orderings above before choosing. A model that passes every guard can");
 Console.WriteLine("still rank badly, and that is the one thing no test can tell you.");
+Console.WriteLine();
+Console.WriteLine("Cars marked [near a limit] only just satisfy something the customer set, and are");
+Console.WriteLine("placed after the ones that do not - by the application, not by the model. Judge");
+Console.WriteLine("the model on the order within each group, and on whether its reasons say so.");
 Console.WriteLine();
 
 return 0;

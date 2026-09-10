@@ -31,6 +31,7 @@ Schema consequences are in [`04-schema-delta.md`](04-schema-delta.md).
 | [D16](#d16--near-duplicates-are-suggested-never-merged) | Near-duplicates are suggested, never merged | Accepted |
 | [D17](#d17--top-level-route-identifiers-are-guids-nested-ones-may-be-integers) | Top-level route identifiers are GUIDs; nested ones may be integers | Accepted |
 | [D18](#d18--the-ai-ranks-it-never-selects-and-guards-decide-whether-to-believe-it) | The AI ranks, it never selects, and guards decide whether to believe it | Accepted |
+| [D19](#d19--a-preference-the-broker-states-is-code-not-a-sentence-in-the-prompt) | A preference the broker states is code, not a sentence in the prompt | Accepted |
 
 ---
 
@@ -999,3 +1000,85 @@ will not.
 `OpenAiCompatibleRankingProvider` covers Groq and anything else speaking that shape. Both compile
 and neither has run against a live endpoint, because no key existed when they were written. The
 first live call is the test.
+
+---
+
+## D19 — A preference the broker states is code, not a sentence in the prompt
+
+**Status:** Accepted · **Phase:** 2, feature 1
+
+### Problem
+
+The broker was asked how a car that only just satisfies a limit should be treated, and chose:
+**scraping a limit is a worse fit.** A 2015 car at 118,400 km against a 120,000 km ceiling has
+passed the filter, but it fits worse than one comfortably inside — and should rank below it even
+though it is cheaper.
+
+That was written into the ranking prompt as rule 6:
+
+> Passing a limit is not the same as fitting it. A car just under the customer's mileage ceiling
+> or at the oldest year they accepted fits worse than one comfortably inside, so rank it below —
+> even though it is cheaper and even though it passed.
+
+**It did not work.** The ordering that came back was byte-identical to the run before the rule
+existed: the 118,400 km car still led, and the list was still pure price order. Three prompt
+revisions — `rank-v3`, `rank-v5` and the wording above — produced the same first three cars. The
+model reads the sentence, does not contradict it, and sorts by price anyway.
+
+Two things made that worse than a single failed attempt. Instruction-following **varies by
+model** — one on the same account ignored the cheapest-first rule entirely — so the rule would
+have quietly meant different things on different providers, and changed meaning the day somebody
+edited a model id in a config file. And the failure is invisible: nothing on screen distinguishes
+"the model applied your rule" from "the model ignored it", so the broker would have believed a
+preference that was not in effect.
+
+### Decision
+
+**A preference the broker states is enforced in code. The prompt may inform the model of it, but
+never depends on it.**
+
+Concretely, in `FitBands`:
+
+- A candidate is **tight** when it is within a tenth of a stated mileage ceiling, or exactly at
+  the oldest year the customer accepted. Nothing else counts — see the costs below.
+- Comfortable fits are ordered ahead of tight ones, **stably**: within a band the model's own
+  ordering survives untouched.
+- The same partition chooses the shortlist that is sent, so a dealer capped at five cars sends
+  the five that fit best rather than the five cheapest.
+- The deterministic fallback obeys it too, so the rule holds whether or not a model ever answers.
+
+The model is still **told** which cars are flagged, as a field on the candidate. It is no longer
+asked to act on it — only to mention it, because "close to the mileage they asked for" is worth
+having in a reason a salesperson reads.
+
+### Why
+
+This is the general rule, not a patch for one sentence. A prompt is a request; the broker's
+domain rules are requirements. Anything the broker would notice being wrong belongs on the side
+of the line that is testable, deterministic, and identical across providers — which also means
+`FitBandTests` can pin the behaviour in a second, for nothing, forever, whereas the prompt version
+could only ever be checked by paying a model and reading the output.
+
+It also sharpens what the AI is actually for. Ordering cars that are genuinely comparable — the
+judgement between a cheaper high-mileage car and a dearer newer one, and the reasons a person
+reads — is the half a model does well. Applying a rule the owner already stated is not.
+
+### Cost accepted
+
+**A cliff at the threshold.** A car at 108,001 km against a 120,000 km ceiling ranks below every
+comfortable car; one at 108,000 does not. That is a real discontinuity, chosen over a smooth
+penalty because a broker can predict which side of a tenth a car falls on, and cannot predict a
+weighted score. The threshold is a constant with a name, and moving it is one edit.
+
+**A cheap car can be pushed a long way down.** If the customer's ceiling is 60,000 km, a $6,000
+car at 59,000 now ranks below a $9,000 car at 53,000. That is precisely what the broker asked for,
+and it is worth restating because it is the case where they may want to revisit the rule.
+
+**Budget and newest-year are deliberately not limits for this purpose.** Being near the top of
+the budget is already paid for by cheapest-first, and counting it twice would demote every dear
+car and collapse the ranking back into the price order it exists to improve on. Being at the
+newest year accepted is the most desirable end of that range, not the worst.
+
+**The model's answer and the shown order can differ.** `AIRequests.OutputMetadataJson` keeps what
+the provider said; `VehicleRecommendations` keeps what a salesperson saw. Two records rather than
+one, which is what makes the reordering auditable instead of invisible.
