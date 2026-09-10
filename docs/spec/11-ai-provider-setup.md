@@ -32,7 +32,55 @@ AI__ApiKey=<your key>
 
 **There is deliberately no default model.** Lineups change faster than this code will, and a
 stale default that silently resolves to a retired model is worse than being told to name one.
-Take the id from the provider's own current documentation.
+
+## Choosing a model
+
+Don't pick one from a datasheet. The only thing that decides it is whether a model can do *this*
+task, and that takes about a minute per model to find out:
+
+```bash
+cd backend/tools/CarDealer.ModelProbe
+AI__ApiKey=<your key> dotnet run
+```
+
+With no arguments it asks your account what it serves, drops the ones that could never rank a car
+(speech, embedding, moderation), and runs each survivor through **the application's own prompt and
+its own guards** against a deliberately awkward five-car set — the cheapest has the highest
+mileage, the newest is dearest, one is missing its colour, and two are close enough that the
+ordering is a judgement rather than a sort.
+
+It prints, per model: whether the answer survived the guards, how long it took, tokens in and out,
+and **the top three of its actual ordering with the reasons it gave**.
+
+To check specific models instead:
+
+```bash
+AI__ApiKey=<key> dotnet run -- --model <id> --model <id>
+```
+
+### What decides it
+
+**Structured output support is the whole game.** The adapter sends
+`response_format: {type: "json_schema", strict: true}`. A model that honours it returns something
+the parser accepts; one that ignores it answers in prose, gets rejected, and falls back to price
+order *every single time*. The probe surfaces this immediately as "The response was not valid
+JSON".
+
+After that, in order:
+
+1. **Instruction-following**, which shows up as guard failures — dropped candidates, invented ids,
+   figures the car never stated. The probe counts these for you.
+2. **The ordering itself**, which no test can judge. Read the top three the probe prints and ask
+   whether you would have shown those cars in that order. This is the half that needs you.
+3. **Speed and cost**, last on purpose. Groq is fast and cheap across its range, so these rarely
+   separate two models that both pass — and a cheaper model with a higher rejection rate is not
+   cheaper.
+
+Prefer a larger general instruction model over a small one. The saving on a task this size is
+fractions of a cent, and small models fail rule 1 more often.
+
+Take the id from Groq's own current documentation or from the probe's discovery output; the ids
+change, which is exactly why this file names none.
 
 ## 2. Restart the API
 
