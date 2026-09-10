@@ -148,6 +148,12 @@ keys in API routes — enumerable, and a rough disclosure of record counts.
 explicitly that internal IDs are acceptable in API routes. The inconsistency is the problem; either
 answer is defensible.
 
+**Phase 1 made this worse rather than better.** Two more integer-keyed routes were added —
+`/customers/{publicId}/notes/{noteId}` and `/duplicates/{id}/merge` — so the mix now spans the
+CRM and the duplicate queue as well. Recorded in
+[`10-phase-1-acceptance.md` §G3](10-phase-1-acceptance.md#g-what-gates-phase-2). Settle this
+before more routes are added; each one raises the cost of whichever answer is chosen.
+
 ## O9 — Phase 0 acceptance criteria
 
 **Closed.** Resolved by [`06-phase-0-acceptance.md`](06-phase-0-acceptance.md), which gives a §8
