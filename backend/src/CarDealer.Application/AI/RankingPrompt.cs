@@ -60,7 +60,8 @@ public static class RankingPrompt
         7. Reasons are for the broker, not the customer. Write two or three short phrases, no
            sentences of praise, no sales language. "48,000 km, well under the limit" is useful;
            "a fantastic opportunity" is not. Write plain English, never the name of a data
-           field: "3 sources list it", not "offerCount 3"; "hybrid", not "Hybrid fuel type".
+           field: "3 sources list it", not "offerCount 3"; "hybrid", not "Hybrid fuel type";
+           "2016, within what they asked for", not "2016 year, meets minYear".
 
         Score each vehicle from 0 to 1 for how well it fits the requirement. Rank 1 is the best
         fit. Ranks must run 1, 2, 3 with no gaps and no repeats.

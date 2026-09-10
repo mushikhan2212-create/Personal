@@ -8,8 +8,10 @@ using CarDealer.Application.Search;
 using CarDealer.Domain.Entities;
 using CarDealer.Domain.Enums;
 using CarDealer.Infrastructure.Persistence;
+using CarDealer.Integrations.AI;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace CarDealer.Infrastructure.AI;
 
@@ -49,16 +51,14 @@ public sealed record RankedEntry(VehicleSearchHit Hit, int Rank, decimal Score, 
 public sealed class RecommendationService
 {
     /// <summary>
-    /// How many cars go to the model.
+    /// A ceiling on the ceiling.
     /// </summary>
     /// <remarks>
-    /// Section 11's "hard-filter candidates first; do not send millions of vehicles to an LLM",
-    /// made a number. Twenty is a screenful - past that a salesperson is not reading the
-    /// ordering anyway, and every extra car is tokens spent on a row nobody looks at. The
-    /// candidates are drawn cheapest-first, so the window always contains the cars a budget
-    /// makes most likely to sell.
+    /// Section 11's "do not send millions of vehicles to an LLM" as a number that configuration
+    /// cannot exceed. Past a screenful a salesperson is not reading the ordering anyway, and
+    /// every extra car is tokens spent on a row nobody looks at.
     /// </remarks>
-    public const int MaxCandidates = 20;
+    public const int CandidateCeiling = 40;
 
     private readonly CarDealerDbContext _db;
     private readonly ISearchProvider _search;
@@ -66,6 +66,7 @@ public sealed class RecommendationService
     private readonly ITenantContext _tenant;
     private readonly IDateTimeProvider _clock;
     private readonly ILogger<RecommendationService> _logger;
+    private readonly int _maxCandidates;
 
     public RecommendationService(
         CarDealerDbContext db,
@@ -73,7 +74,8 @@ public sealed class RecommendationService
         IAIProvider ai,
         ITenantContext tenant,
         IDateTimeProvider clock,
-        ILogger<RecommendationService> logger)
+        ILogger<RecommendationService> logger,
+        IOptions<AIOptions> options)
     {
         _db = db;
         _search = search;
@@ -81,9 +83,16 @@ public sealed class RecommendationService
         _tenant = tenant;
         _clock = clock;
         _logger = logger;
+
+        // Clamped rather than trusted: configuration is a text file somebody edits, and a typo
+        // that sends the whole catalogue to a model is expensive in a way a typo should not be.
+        _maxCandidates = Math.Clamp(options.Value.MaxCandidates, 1, CandidateCeiling);
     }
 
     public bool ProviderConfigured => _ai.IsConfigured;
+
+    /// <summary>How many cars this configuration sends to the model.</summary>
+    public int MaxCandidates => _maxCandidates;
 
     /// <summary>
     /// Ranks the candidates for one requirement.
@@ -98,7 +107,7 @@ public sealed class RecommendationService
         CancellationToken ct = default)
     {
         var found = await _search
-            .SearchAsync(query with { Page = 1, PageSize = MaxCandidates }, ct)
+            .SearchAsync(query with { Page = 1, PageSize = _maxCandidates }, ct)
             .ConfigureAwait(false);
 
         var hits = found.Hits;

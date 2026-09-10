@@ -82,6 +82,37 @@ fractions of a cent, and small models fail rule 1 more often.
 Take the id from Groq's own current documentation or from the probe's discovery output; the ids
 change, which is exactly why this file names none.
 
+## Sizing it to your rate limit
+
+The measurement that decides whether this works at all, and the one nobody thinks to take.
+
+A Groq `on_demand` account is capped at **1,000 output tokens per minute**, and the cap is
+enforced against what a request *asks for* rather than what it uses — the request is rejected
+outright with a 429, not truncated. Measured on the probe's five-car set, a ranking costs about
+**190 output tokens per car**. So:
+
+| Cars sent | Output tokens | Fits 1,000 OTPM? |
+| --- | --- | --- |
+| 5 | ~950 | just |
+| 10 | ~1,900 | no |
+| 20 (the default) | ~3,800 | no |
+
+**On a rate-limited tier, leave the default and every ranking 429s and falls back to price
+order.** It is safe — the screen says so — but the feature never actually runs. Set it to what
+your tier affords:
+
+```
+AI__MaxCandidates=5
+```
+
+Five cars is still a shortlist and still worth ordering. Raise it when the tier does; the code
+clamps anything above 40, because a typo in a config file should not send the whole catalogue to
+a model.
+
+`AI__MaxTokens` (default 8,000) is the other half of the same arithmetic. Some models reject a
+value above their own context ceiling — one on this account caps at 4,096 — so lower it if a
+model you want returns a 400 naming `max_tokens`.
+
 ## 2. Restart the API
 
 The provider is chosen at startup:

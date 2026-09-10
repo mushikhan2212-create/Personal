@@ -755,7 +755,7 @@ public sealed class CustomersController : ControllerBase
         }
 
         var outcome = await recommendations
-            .RankAsync(requirement, ToQuery(requirement, 1, RecommendationService.MaxCandidates), refresh, ct)
+            .RankAsync(requirement, ToQuery(requirement, 1, recommendations.MaxCandidates), refresh, ct)
             .ConfigureAwait(false);
 
         return Ok(new

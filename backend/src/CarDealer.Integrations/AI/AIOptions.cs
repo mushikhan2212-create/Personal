@@ -55,6 +55,24 @@ public sealed class AIOptions
     /// </remarks>
     public int MaxTokens { get; set; } = 8_000;
 
+    /// <summary>How many cars are sent to the model for one ranking.</summary>
+    /// <remarks>
+    /// <para>
+    /// Master prompt section 11's "hard-filter candidates first" made a number, and configurable
+    /// because the right number is a property of the account rather than of the product.
+    /// Measured against a live Groq account: about 190 output tokens per car, so twenty cars is
+    /// roughly 3,800 - against a free-tier ceiling of 1,000 output tokens per minute, which
+    /// rejects the request outright rather than truncating it.
+    /// </para>
+    ///
+    /// <para>
+    /// So a dealer on a rate-limited tier sets this to what fits (five is a shortlist and still
+    /// useful) and raises it when the tier does. The failure if they do not is safe but total:
+    /// every ranking 429s and falls back to price order.
+    /// </para>
+    /// </remarks>
+    public int MaxCandidates { get; set; } = 20;
+
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(Provider)
         && !string.IsNullOrWhiteSpace(ApiKey)
