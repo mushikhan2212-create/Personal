@@ -18,12 +18,19 @@ using Microsoft.Extensions.Options;
 //
 //   ANTHROPIC-STYLE:  dotnet run -- --provider anthropic --model <id>
 //   GROQ / OPENAI:    dotnet run -- [--model <id>] [--model <id>] ...
+//   RATE-LIMITED:     dotnet run -- --max-tokens 1000
 //
 // With no --model, it asks the provider what it serves and probes everything plausible.
 
 var provider = ArgValue("--provider") ?? "groq";
 var baseUrl = ArgValue("--base-url");
 var explicitModels = ArgValues("--model");
+
+// Sized for the probe's own five-car set at roughly 190 output tokens per car, not for the
+// application's default. It matters: a rate-limited account rejects a request on the ceiling it
+// ASKS for rather than what it uses, so probing at 8,000 made two models 429 that would have
+// answered comfortably - excluding them for a setting rather than for a shortcoming.
+var maxTokens = int.TryParse(ArgValue("--max-tokens"), out var parsed) ? parsed : 2_000;
 
 var apiKey = Environment.GetEnvironmentVariable("AI__ApiKey")
     ?? Environment.GetEnvironmentVariable("GROQ_API_KEY")
@@ -54,7 +61,9 @@ var request = SampleRequest();
 
 Console.WriteLine();
 Console.WriteLine($"Probing {models.Count} model(s) against the real ranking task.");
-Console.WriteLine($"{request.Candidates.Count} candidate vehicles, {RankingPrompt.Version} prompt.");
+Console.WriteLine(
+    $"{request.Candidates.Count} candidate vehicles, {RankingPrompt.Version} prompt, "
+    + $"max_tokens {maxTokens}.");
 Console.WriteLine();
 
 var results = new List<Result>();
@@ -70,6 +79,7 @@ foreach (var model in models)
         ApiKey = apiKey,
         BaseUrl = baseUrl,
         TimeoutSeconds = 60,
+        MaxTokens = maxTokens,
     });
 
     IAIProvider ranker = provider.Equals("anthropic", StringComparison.OrdinalIgnoreCase)

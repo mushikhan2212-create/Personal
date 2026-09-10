@@ -27,7 +27,7 @@ namespace CarDealer.Application.AI;
 public static class RankingPrompt
 {
     /// <summary>Bump on any change to the instructions or the schema below.</summary>
-    public const string Version = "rank-v2";
+    public const string Version = "rank-v3";
 
     /// <summary>
     /// The standing instructions. Stable across calls, which is what makes it cacheable.
@@ -53,8 +53,10 @@ public static class RankingPrompt
         4. Never put another vehicle's figures in this vehicle's reasons. Compare in words -
            "the lowest mileage of the group", "the newest here" - and never "newer than the
            2016 one" or "12,000 km less than the other Axio".
-        5. Prefer the car that best satisfies what the customer asked for. Where the data is
-           equal, prefer lower mileage, then newer, then cheaper.
+        5. Prefer the car that best satisfies what the customer asked for. Where two cars
+           satisfy it equally, prefer the cheaper, then the lower mileage, then the newer.
+           Price is what the broker would quote: the retail price where a car has one, and the
+           source price where it does not.
         6. A vehicle offered by more than one source is more likely to still be available. That
            is weak evidence about availability only - it says nothing about condition.
         7. Reasons are for the broker, not the customer. Write two or three short phrases, no
