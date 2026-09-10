@@ -42,3 +42,13 @@ export function DownloadGlyph() {
     </svg>
   );
 }
+
+/** A pencil, for editing a record in place. */
+export function PencilGlyph() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+      <path {...stroke} d="M4 20h4l10-10a2.8 2.8 0 10-4-4L4 16v4z" />
+      <path {...stroke} d="M13.5 6.5l4 4" />
+    </svg>
+  );
+}

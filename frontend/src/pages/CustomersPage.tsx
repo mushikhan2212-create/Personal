@@ -7,6 +7,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { createCustomer, listCustomers } from '../api/client';
 import type { CustomerInput, CustomerListItem, CustomerStatus } from '../api/types';
 import { CustomerImportDrawer } from '../components/CustomerImportDrawer';
+import { CustomerFields } from '../components/CustomerFields';
 import { formatUtc } from '../format';
 
 interface Props {
@@ -27,10 +28,6 @@ const STATUS_COLOUR: Record<CustomerStatus, string | undefined> = {
 };
 
 const STATUSES: CustomerStatus[] = ['Lead', 'Active', 'Customer', 'Dormant', 'Closed'];
-
-const LEAD_SOURCES = [
-  'WalkIn', 'Referral', 'Website', 'WhatsApp', 'SocialMedia', 'Marketplace', 'Repeat',
-] as const;
 
 export function CustomersPage({ canManage, onOpenCustomer }: Props) {
   const { message } = AntApp.useApp();
@@ -238,56 +235,7 @@ export function CustomersPage({ canManage, onOpenCustomer }: Props) {
         }
       >
         <Form form={form} layout="vertical">
-          <Flex gap={12}>
-            <Form.Item name="firstName" label="First name" style={{ flex: 1 }}>
-              <Input />
-            </Form.Item>
-            <Form.Item name="lastName" label="Last name" style={{ flex: 1 }}>
-              <Input />
-            </Form.Item>
-          </Flex>
-
-          <Form.Item name="phone" label="Phone" help="Usually the WhatsApp number too.">
-            <Input />
-          </Form.Item>
-
-          <Form.Item name="email" label="Email" style={{ marginTop: 16 }}>
-            <Input />
-          </Form.Item>
-
-          <Flex gap={12}>
-            <Form.Item name="city" label="City" style={{ flex: 1 }}>
-              <Input />
-            </Form.Item>
-            <Form.Item name="countryCode" label="Country" style={{ width: 110 }}>
-              <Input placeholder="PK" maxLength={2} />
-            </Form.Item>
-          </Flex>
-
-          <Flex gap={12}>
-            <Form.Item name="status" label="Status" initialValue="Lead" style={{ flex: 1 }}>
-              <Select options={STATUSES.map((s) => ({ value: s, label: s }))} />
-            </Form.Item>
-            <Form.Item name="leadSource" label="Came from" style={{ flex: 1 }}>
-              <Select
-                allowClear
-                placeholder="Unknown"
-                options={LEAD_SOURCES.map((s) => ({ value: s, label: s }))}
-              />
-            </Form.Item>
-          </Flex>
-
-          {/* Becomes the first entry in the customer's note log rather than a field on the
-              record — so "referred by his brother, pays cash" sits in the same list as
-              everything learned afterwards. */}
-          <Form.Item name="notes" label="First note" tooltip="Optional. Anything you already know.">
-            <Input.TextArea rows={3} placeholder="How you know them, what they're after…" />
-          </Form.Item>
-
-          {/* The API requires one of four. Said here so the 400 is never a surprise. */}
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            A name or a way to contact them is required — everything else can follow.
-          </Typography.Text>
+          <CustomerFields firstNote />
         </Form>
       </Drawer>
     </Space>

@@ -5,15 +5,16 @@ import {
 } from 'antd';
 import {
   addCustomerNote, addRequirement, deleteCustomer, deleteCustomerNote, deleteRequirement,
-  editCustomerNote, getCustomer, getMatches,
+  editCustomerNote, getCustomer, getMatches, updateCustomer,
 } from '../api/client';
 import type {
-  CustomerDetail, CustomerNote, Requirement, RequirementInput, RequirementMatches,
+  CustomerDetail, CustomerInput, CustomerNote, Requirement, RequirementInput, RequirementMatches,
 } from '../api/types';
 import { VehicleCards } from '../components/VehicleCards';
 import { WhatsAppButton } from '../components/WhatsAppButton';
 import { WhatsAppDrawer } from '../components/WhatsAppDrawer';
-import { PlusGlyph, TrashGlyph } from '../components/icons';
+import { PencilGlyph, PlusGlyph, TrashGlyph } from '../components/icons';
+import { CustomerFields } from '../components/CustomerFields';
 import { formatUtc, specLabel } from '../format';
 
 interface Props {
@@ -46,7 +47,10 @@ export function CustomerDetailPage({ publicId, canManage, onBack, onOpenVehicle 
   const [messaging, setMessaging] = useState(false);
   const [messagingVehicle, setMessagingVehicle] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [form] = Form.useForm<RequirementInput>();
+  const [editForm] = Form.useForm<CustomerInput>();
 
   const load = useCallback(async (): Promise<void> => {
     setLoading(true);
@@ -64,6 +68,60 @@ export function CustomerDetailPage({ publicId, canManage, onBack, onOpenVehicle 
   useEffect(() => {
     void load();
   }, [load]);
+
+  /**
+   * Opens the edit drawer on the customer as they currently are.
+   *
+   * Every field is seeded, including the ones with no visible control. The update endpoint
+   * applies the whole request, so a field left out of the form is not left alone - it is set
+   * to null, and somebody correcting a phone number would silently clear whatever else was
+   * missing. assignedUserId has no UI at all and rides along for exactly that reason.
+   */
+  const openEdit = (): void => {
+    if (customer === null) return;
+
+    editForm.setFieldsValue({
+      firstName: customer.firstName ?? undefined,
+      lastName: customer.lastName ?? undefined,
+      phone: customer.phone ?? undefined,
+      email: customer.email ?? undefined,
+      city: customer.city ?? undefined,
+      countryCode: customer.countryCode ?? undefined,
+      preferredLanguage: customer.preferredLanguage ?? undefined,
+      status: customer.status,
+      leadSource: customer.leadSource === 'Unknown' ? undefined : customer.leadSource,
+    });
+
+    setEditOpen(true);
+  };
+
+  const saveEdit = async (): Promise<void> => {
+    if (customer === null) return;
+
+    setSavingEdit(true);
+
+    try {
+      const values = await editForm.validateFields();
+
+      await updateCustomer(publicId, {
+        ...values,
+
+        // Not on the form and not for this screen to change - but the endpoint would null it
+        // if it were absent, quietly unassigning the customer from whoever holds them.
+        assignedUserId: customer.assignedUserId ?? undefined,
+      });
+
+      setEditOpen(false);
+      void message.success('Saved.');
+      await load();
+    } catch (e) {
+      // validateFields throws its own object when a field is invalid; only real failures are
+      // worth a message, and the form marks the rest itself.
+      if (e instanceof Error) message.error(e.message);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   const addOne = async (): Promise<void> => {
     setSaving(true);
@@ -203,6 +261,9 @@ export function CustomerDetailPage({ publicId, canManage, onBack, onOpenVehicle 
           <Flex gap={8} wrap>
             {canManage && <WhatsAppButton onClick={() => setMessaging(true)} />}
             {canManage && (
+              <Button icon={<PencilGlyph />} onClick={openEdit}>Edit</Button>
+            )}
+            {canManage && (
               <Button danger icon={<TrashGlyph />} onClick={removeCustomer}>Delete</Button>
             )}
           </Flex>
@@ -261,6 +322,27 @@ export function CustomerDetailPage({ publicId, canManage, onBack, onOpenVehicle 
             />
           )}
       </Card>
+
+      <Drawer
+        title="Edit customer"
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        width={380}
+        footer={
+          <Flex gap={8} justify="flex-end">
+            <Button onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button type="primary" loading={savingEdit} onClick={() => void saveEdit()}>
+              Save
+            </Button>
+          </Flex>
+        }
+      >
+        {/* No note field: notes are their own log below, with their own controls, and the
+            update endpoint ignores the field anyway. */}
+        <Form form={editForm} layout="vertical">
+          <CustomerFields firstNote={false} />
+        </Form>
+      </Drawer>
 
       <WhatsAppDrawer
         open={messaging || messagingVehicle !== null}

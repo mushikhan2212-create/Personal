@@ -274,6 +274,22 @@ export interface CustomerInput {
   preferredLanguage?: string;
   status?: CustomerStatus;
   leadSource?: LeadSource;
+
+  /**
+   * Who holds this customer.
+   *
+   * No screen sets it yet, but it belongs on the input: the update endpoint applies every
+   * field it is given, so a request that omits this clears it. An edit form has to send back
+   * what it loaded.
+   */
+  assignedUserId?: number;
+
+  /**
+   * The opening note, on create only.
+   *
+   * Starts the customer's note log rather than filling a field on the record. The update path
+   * ignores it — notes are edited through their own endpoints once the customer exists.
+   */
   notes?: string;
 }
 

@@ -180,4 +180,144 @@ public sealed class CustomerTests : IClassFixture<ApiFactory>
 
         Assert.Equal(1, found.GetProperty("totalCount").GetInt32());
     }
+
+    // ---------------------------------------------------------------------------------
+    // Editing an existing customer
+    // ---------------------------------------------------------------------------------
+
+    private async Task<(HttpClient Client, Guid Id)> AnEditableCustomerAsync()
+    {
+        var client = await _factory.AuthenticatedClientAsync("owner@nihon-motors.test");
+
+        var created = await client.PostAsJsonAsync("/api/v1/customers", new
+        {
+            firstName = "Editable",
+            lastName = "Person",
+            phone = "+92 300 1112223",
+            email = "editable@example.test",
+            city = "Karachi",
+            countryCode = "PK",
+            preferredLanguage = "ur",
+            status = "Lead",
+            leadSource = "Referral",
+            notes = "First contact, before anything was corrected.",
+        });
+
+        created.EnsureSuccessStatusCode();
+
+        var id = (await created.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("publicId").GetGuid();
+
+        return (client, id);
+    }
+
+    [Fact]
+    public async Task A_customer_s_details_can_be_corrected()
+    {
+        // The everyday case this exists for: somebody changes their number.
+        var (client, id) = await AnEditableCustomerAsync();
+
+        var updated = await client.PutAsJsonAsync($"/api/v1/customers/{id}", new
+        {
+            firstName = "Editable",
+            lastName = "Person",
+            phone = "+92 300 9998887",
+            email = "corrected@example.test",
+            city = "Lahore",
+            countryCode = "PK",
+            preferredLanguage = "ur",
+            status = "Active",
+            leadSource = "Referral",
+        });
+
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
+
+        var after = await client.GetFromJsonAsync<JsonElement>($"/api/v1/customers/{id}");
+
+        Assert.Equal("+92 300 9998887", after.GetProperty("phone").GetString());
+        Assert.Equal("corrected@example.test", after.GetProperty("email").GetString());
+        Assert.Equal("Lahore", after.GetProperty("city").GetString());
+        Assert.Equal("Active", after.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task An_update_applies_every_field_including_the_ones_left_out()
+    {
+        // Documenting the sharp edge rather than pretending it is not there. Apply() sets each
+        // field from the request, so a partial body does not leave the rest alone - it clears
+        // them. Any form posting here has to send the whole record back, which is why the edit
+        // drawer seeds every field including ones it shows no control for.
+        var (client, id) = await AnEditableCustomerAsync();
+
+        var updated = await client.PutAsJsonAsync($"/api/v1/customers/{id}", new
+        {
+            firstName = "Editable",
+            phone = "+92 300 1112223",
+        });
+
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
+
+        var after = await client.GetFromJsonAsync<JsonElement>($"/api/v1/customers/{id}");
+
+        Assert.Equal(JsonValueKind.Null, after.GetProperty("city").ValueKind);
+        Assert.Equal(JsonValueKind.Null, after.GetProperty("preferredLanguage").ValueKind);
+        Assert.Equal(JsonValueKind.Null, after.GetProperty("email").ValueKind);
+    }
+
+    [Fact]
+    public async Task Editing_a_customer_leaves_their_notes_alone()
+    {
+        // Notes are their own log now. An update that carried a notes field would either
+        // duplicate an entry or overwrite the column nothing reads - neither is wanted, so the
+        // field is ignored on this path.
+        var (client, id) = await AnEditableCustomerAsync();
+
+        await client.PutAsJsonAsync($"/api/v1/customers/{id}", new
+        {
+            firstName = "Editable",
+            phone = "+92 300 1112223",
+            notes = "This should go nowhere.",
+        });
+
+        var after = await client.GetFromJsonAsync<JsonElement>($"/api/v1/customers/{id}");
+        var notes = after.GetProperty("notes").EnumerateArray().ToList();
+
+        Assert.Single(notes);
+        Assert.Equal(
+            "First contact, before anything was corrected.",
+            notes[0].GetProperty("body").GetString());
+    }
+
+    [Fact]
+    public async Task Another_tenant_cannot_edit_a_customer()
+    {
+        var (_, id) = await AnEditableCustomerAsync();
+
+        var stranger = await _factory.AuthenticatedClientAsync("owner@karachi-auto.test");
+
+        // 404 rather than 403: a 403 would confirm the customer exists, which is itself a leak.
+        var attempt = await stranger.PutAsJsonAsync($"/api/v1/customers/{id}", new
+        {
+            firstName = "Hijacked",
+            phone = "+92 300 0000000",
+        });
+
+        Assert.Equal(HttpStatusCode.NotFound, attempt.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_read_only_account_cannot_edit_a_customer()
+    {
+        var (_, id) = await AnEditableCustomerAsync();
+
+        var readOnly = await _factory.AuthenticatedClientAsync("readonly@nihon-motors.test");
+
+        var attempt = await readOnly.PutAsJsonAsync($"/api/v1/customers/{id}", new
+        {
+            firstName = "Nope",
+            phone = "+92 300 0000000",
+        });
+
+        Assert.Equal(HttpStatusCode.Forbidden, attempt.StatusCode);
+    }
 }

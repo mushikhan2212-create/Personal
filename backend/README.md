@@ -105,10 +105,11 @@ is written from its output — including the POC's central finding, that twelve 
 
 ### Who can do what
 
-| | Search the catalogue | My Sources | Register, import, sync, delete sources | Review duplicates |
-| --- | --- | --- | --- | --- |
-| TenantOwner, Admin | yes | yes | yes | yes |
-| SalesManager, Salesperson, ReadOnly | yes | yes | **no** | **no** |
+| | Search the catalogue | My Sources | Edit customers and their notes | Register, import, sync, delete sources | Review duplicates |
+| --- | --- | --- | --- | --- | --- |
+| TenantOwner, Admin | yes | yes | yes | yes | yes |
+| SalesManager, Salesperson | yes | yes | yes | **no** | **no** |
+| ReadOnly | yes | yes | **no** | **no** | **no** |
 
 Registering a source or importing a file publishes cars into the shared catalogue that every
 tenant reads, so it needs `vehicles.sync`, held by Admin and Tenant Owner only. Everyone else
@@ -444,6 +445,23 @@ suppress a colleague's alert would lose a sale for a reason nobody could see aft
 
 `customers.read` sees alerts; `customers.manage` is needed to mark them seen or to trigger a
 scan, because in a shared inbox clearing an alert tells colleagues it has been dealt with.
+
+## Editing a customer
+
+**Edit** on the customer page opens the same field set the add form uses, prefilled.
+`customers.manage` is needed; `customers.read` sees the record but gets no button.
+
+One sharp edge worth knowing before writing anything else against `PUT /api/v1/customers/{id}`:
+**it applies every field in the request, so a partial body clears the rest.** Sending only a
+corrected phone number blanks the email, city and language. That is why the edit drawer seeds
+every field — including `preferredLanguage`, which the page displays, and `assignedUserId`,
+which has no control at all and rides along invisibly so an edit cannot silently unassign the
+customer. `An_update_applies_every_field_including_the_ones_left_out` pins this behaviour so it
+is a decision rather than a surprise.
+
+Notes are not on this form. They are their own log with their own endpoints, and the update path
+ignores a `notes` field — a box here would either duplicate an entry or look like it works and
+do nothing.
 
 ## Finding duplicate cars
 
