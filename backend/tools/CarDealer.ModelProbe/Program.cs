@@ -152,8 +152,27 @@ foreach (var r in usable)
     // Shown after FitBands, which is what a salesperson would actually see. The model's own
     // order is no longer the final word, and printing it as though it were would put this tool
     // back to measuring something the product does not do.
-    foreach (var entry in FitBands.Apply(request.Candidates, r.Answer.Ranked!).Take(3))
+    var ordering = FitBands.Apply(request.Candidates, r.Answer.Ranked!);
+
+    // The top of the list, and then every flagged car wherever it landed. A plain Take(3) hid
+    // the one thing rule 6 still asks of the model: flagged cars sort to the bottom by
+    // construction, so whether it mentioned the flag in their reasons was unobservable in the
+    // only output anybody reads.
+    var shown = ordering.Take(3)
+        .Concat(ordering.Skip(3).Where(e => Flagged(request, e.Id)))
+        .ToList();
+
+    var previous = 0;
+
+    foreach (var entry in shown)
     {
+        if (entry.Rank > previous + 1)
+        {
+            Console.WriteLine("          ...");
+        }
+
+        previous = entry.Rank;
+
         var car = request.Candidates.First(c => c.Id == entry.Id);
         var band = car.CloseToTheirLimits == true ? " [near a limit]" : string.Empty;
 
@@ -169,13 +188,17 @@ Console.WriteLine("Read the orderings above before choosing. A model that passes
 Console.WriteLine("still rank badly, and that is the one thing no test can tell you.");
 Console.WriteLine();
 Console.WriteLine("Cars marked [near a limit] only just satisfy something the customer set, and are");
-Console.WriteLine("placed after the ones that do not - by the application, not by the model. Judge");
-Console.WriteLine("the model on the order within each group, and on whether its reasons say so.");
+Console.WriteLine("placed after the ones that do not - by the application, not by the model. They are");
+Console.WriteLine("listed wherever they landed, because the ordering is no longer the question about");
+Console.WriteLine("them: judge the model on the order within each group, and on whether it says so.");
 Console.WriteLine();
 
 return 0;
 
 // ---------------------------------------------------------------------------------------
+
+static bool Flagged(RankingRequest request, Guid id)
+    => request.Candidates.First(c => c.Id == id).CloseToTheirLimits == true;
 
 static string? ArgValue(string name)
 {
