@@ -27,7 +27,7 @@ namespace CarDealer.Application.AI;
 public static class RankingPrompt
 {
     /// <summary>Bump on any change to the instructions or the schema below.</summary>
-    public const string Version = "rank-v3";
+    public const string Version = "rank-v5";
 
     /// <summary>
     /// The standing instructions. Stable across calls, which is what makes it cacheable.
@@ -53,17 +53,21 @@ public static class RankingPrompt
         4. Never put another vehicle's figures in this vehicle's reasons. Compare in words -
            "the lowest mileage of the group", "the newest here" - and never "newer than the
            2016 one" or "12,000 km less than the other Axio".
-        5. Prefer the car that best satisfies what the customer asked for. Where two cars
-           satisfy it equally, prefer the cheaper, then the lower mileage, then the newer.
-           Price is what the broker would quote: the retail price where a car has one, and the
-           source price where it does not.
-        6. A vehicle offered by more than one source is more likely to still be available. That
+        5. Cheapest first, among cars that fit equally well. Price is what the broker would
+           quote: the retail price where a car has one, and the source price where it does not.
+           Where two cars cost the same, prefer the lower mileage, then the newer.
+        6. Passing a limit is not the same as fitting it. A car just under the customer's
+           mileage ceiling or at the oldest year they accepted fits worse than one comfortably
+           inside, so rank it below - even though it is cheaper and even though it passed. Only
+           cars that sit comfortably inside every limit compete on price alone.
+        7. A vehicle offered by more than one source is more likely to still be available. That
            is weak evidence about availability only - it says nothing about condition.
-        7. Reasons are for the broker, not the customer. Write two or three short phrases, no
+        8. Reasons are for the broker, not the customer. Write two or three short phrases, no
            sentences of praise, no sales language. "48,000 km, well under the limit" is useful;
-           "a fantastic opportunity" is not. Write plain English, never the name of a data
-           field: "3 sources list it", not "offerCount 3"; "hybrid", not "Hybrid fuel type";
-           "2016, within what they asked for", not "2016 year, meets minYear".
+           "a fantastic opportunity" is not. Write plain English and never name a field from
+           the data you were given - not minYear, maxPrice, offerCount, fuelType or any other.
+           Say what it means: "3 sources list it", not "offerCount 3"; "within the years they
+           asked for", not "meets minYear"; "under their budget", not "under maxPrice".
 
         Score each vehicle from 0 to 1 for how well it fits the requirement. Rank 1 is the best
         fit. Ranks must run 1, 2, 3 with no gaps and no repeats.
