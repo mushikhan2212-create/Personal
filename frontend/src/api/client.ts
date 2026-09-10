@@ -3,7 +3,7 @@ import type {
   CustomerDetail, CustomerImportResult, CustomerInput, CustomerListResponse, CustomerStatus,
   ImportResult, LoginResponse, MySource, RequirementInput, RequirementMatches, SyncResult,
   VehicleDetail, VehicleSearchResponse, VehicleSearchSort, VehicleSourceSummary,
-  DuplicateQueue, MergeRecord,
+  DuplicateQueue, MergeRecord, MessageTemplateList,
 } from './types';
 
 /**
@@ -389,11 +389,49 @@ export const scanForAlerts = (): Promise<AlertScanResult> =>
  * can be reached at all is one rule, tested in one place.
  */
 export const draftWhatsApp = (
-  customerPublicId: string, vehiclePublicId?: string, body?: string,
+  customerPublicId: string,
+  vehiclePublicId?: string,
+  body?: string,
+  templatePublicId?: string,
 ): Promise<MessageDraft> =>
   request<MessageDraft>('/messaging/whatsapp/draft', {
     method: 'POST',
-    body: JSON.stringify({ customerPublicId, vehiclePublicId, body }),
+    body: JSON.stringify({ customerPublicId, vehiclePublicId, body, templatePublicId }),
+  });
+
+// --- Message templates --------------------------------------------------------------------
+
+export const listMessageTemplates = (): Promise<MessageTemplateList> =>
+  request<MessageTemplateList>('/message-templates');
+
+export const createMessageTemplate = (
+  body: { name: string; body: string; sortOrder?: number },
+): Promise<{ id: string; name: string }> =>
+  request('/message-templates', { method: 'POST', body: JSON.stringify(body) });
+
+export const updateMessageTemplate = (
+  id: string, body: { name: string; body: string; sortOrder?: number },
+): Promise<{ id: string; name: string }> =>
+  request(`/message-templates/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+
+export const deleteMessageTemplate = (id: string): Promise<void> =>
+  request(`/message-templates/${id}`, { method: 'DELETE' });
+
+export const restoreStarterTemplates = (): Promise<{ restored: string[] }> =>
+  request('/message-templates/restore-starters', { method: 'POST' });
+
+/**
+ * Sets this tenant's own retail price for a car.
+ *
+ * Writes only the overlay, never the catalogue row: the listing carries what the exporter asks,
+ * this carries what you sell at, and `{Price}` in a message template reads this one.
+ */
+export const setVehiclePricing = (
+  id: string, tenantPrice: number | null, tenantCurrencyCode?: string | null,
+): Promise<{ tenantPrice: number | null; tenantCurrencyCode: string | null }> =>
+  request(`/vehicles/${id}/pricing`, {
+    method: 'PUT',
+    body: JSON.stringify({ tenantPrice, tenantCurrencyCode }),
   });
 
 /**

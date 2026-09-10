@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, App as AntApp, Button, Drawer, Flex, Input, Select, Skeleton, Tag, Typography } from 'antd';
-import { draftWhatsApp, listCustomers, savePhoto } from '../api/client';
-import type { CustomerListItem, MessageDraft, MessagePhoto } from '../api/types';
+import { draftWhatsApp, listCustomers, listMessageTemplates, savePhoto } from '../api/client';
+import type {
+  CustomerListItem, MessageDraft, MessagePhoto, MessageTemplate,
+} from '../api/types';
 import { DownloadGlyph } from './icons';
 
 interface Props {
@@ -20,6 +22,18 @@ interface Props {
 
 /** Long enough that typing does not fire a request per keystroke, short enough to feel live. */
 const REDRAFT_DELAY_MS = 400;
+
+/**
+ * The ceiling WhatsAppLinkProvider enforces on the pre-filled text.
+ *
+ * Mirrored here rather than served, because it is the browser and the mobile deep-link handler
+ * that impose it - the server's constant and this one are two statements of the same external
+ * limit. Past it the link is truncated, which loses the sign-off without saying so.
+ */
+const MAX_LINK_BODY = 1500;
+
+/** Where the counter appears, early enough to be a nudge rather than a verdict. */
+const LENGTH_WARNING_AT = 1200;
 
 /**
  * Composing a WhatsApp message to a customer.
@@ -47,9 +61,16 @@ export function WhatsAppDrawer({
   const [choices, setChoices] = useState<CustomerListItem[]>([]);
   const [searching, setSearching] = useState(false);
   const [savingPhotos, setSavingPhotos] = useState(false);
+  const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  const [templateId, setTemplateId] = useState<string | undefined>(undefined);
 
   const needsPicker = customerPublicId === null;
   const activeCustomer = customerPublicId ?? picked;
+
+  // A template naming any vehicle field cannot render without a car, so it is not offered when
+  // there is none - a "Price quote" with every line dropped is a worse choice than no choice.
+  const applicable = templates.filter((t) => !t.needsVehicle || vehiclePublicId !== undefined);
+  const chosen = applicable.find((t) => t.id === templateId);
 
   // Distinguishes "opening, compose one for me" from "they edited it, keep their words".
   const composed = useRef(false);
@@ -66,6 +87,36 @@ export function WhatsAppDrawer({
       .catch(() => setChoices([]))
       .finally(() => setSearching(false));
   }, [open, needsPicker]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+
+    listMessageTemplates()
+      .then((result) => { if (!cancelled) setTemplates(result.items); })
+      // An empty list is survivable: the server composes a message when no template is named,
+      // so the drawer still works with the picker simply absent.
+      .catch(() => { if (!cancelled) setTemplates([]); });
+
+    return () => { cancelled = true; };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    // Falls to the first applicable template whenever the current one does not fit - on first
+    // load, and when the drawer is reused for a message with no car attached.
+    setTemplateId((current) => {
+      const stillFits = templates.some(
+        (t) => t.id === current && (!t.needsVehicle || vehiclePublicId !== undefined),
+      );
+
+      if (stillFits) return current;
+
+      return templates.find((t) => !t.needsVehicle || vehiclePublicId !== undefined)?.id;
+    });
+  }, [open, templates, vehiclePublicId]);
 
   useEffect(() => {
     if (!open) return;
@@ -87,7 +138,7 @@ export function WhatsAppDrawer({
 
     let cancelled = false;
 
-    draftWhatsApp(activeCustomer, vehiclePublicId)
+    draftWhatsApp(activeCustomer, vehiclePublicId, undefined, templateId)
       .then((result) => {
         if (cancelled) return;
 
@@ -101,7 +152,9 @@ export function WhatsAppDrawer({
       .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
-  }, [open, activeCustomer, vehiclePublicId]);
+    // templateId included deliberately: picking a different template rewrites the draft, which
+    // is the whole point of picking one.
+  }, [open, activeCustomer, vehiclePublicId, templateId]);
 
   useEffect(() => {
     // Only after the first composition, so this does not fire a second request for the text
@@ -109,7 +162,7 @@ export function WhatsAppDrawer({
     if (!open || !activeCustomer || !composed.current) return;
 
     const timer = setTimeout(() => {
-      draftWhatsApp(activeCustomer, vehiclePublicId, body)
+      draftWhatsApp(activeCustomer, vehiclePublicId, body, templateId)
         .then(setDraft)
         // A failed re-link leaves the previous one in place; the text on screen is what the
         // salesperson can always copy by hand.
@@ -117,7 +170,7 @@ export function WhatsAppDrawer({
     }, REDRAFT_DELAY_MS);
 
     return () => clearTimeout(timer);
-  }, [body, open, activeCustomer, vehiclePublicId]);
+  }, [body, open, activeCustomer, vehiclePublicId, templateId]);
 
   const saveAll = async (): Promise<void> => {
     if (!draft) return;
@@ -237,12 +290,56 @@ export function WhatsAppDrawer({
             </Flex>
           )}
 
+          {applicable.length > 0 && (
+            <Flex vertical gap={6}>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Start from
+              </Typography.Text>
+
+              <Select
+                value={templateId}
+                onChange={(v) => setTemplateId(v)}
+                style={{ width: '100%' }}
+                options={applicable.map((t) => ({ value: t.id, label: t.name }))}
+              />
+
+              {chosen?.revealsSource && (
+                // The operator allowed the listing link per template, and this is the other
+                // half of that bargain: say so every time, not once in a settings screen.
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="This template includes the source listing link"
+                  description={
+                    'The link names the exporter, so a customer who follows it can buy from '
+                    + 'them directly. Delete that line if you would rather they came back to you.'
+                  }
+                />
+              )}
+            </Flex>
+          )}
+
           <Input.TextArea
             value={body}
             onChange={(e) => setBody(e.target.value)}
             autoSize={{ minRows: 10, maxRows: 20 }}
             placeholder="Your message"
           />
+
+          {body.length > LENGTH_WARNING_AT && (
+            // The click-to-chat link truncates past its ceiling, and a truncated message
+            // arrives mangled rather than short - it loses the sign-off silently. Better to
+            // say so while there is still a person looking at it.
+            <Typography.Text
+              type={body.length > MAX_LINK_BODY ? 'danger' : 'warning'}
+              style={{ fontSize: 12 }}
+            >
+              {body.length > MAX_LINK_BODY
+                ? `${body.length} characters — WhatsApp will cut this off at ${MAX_LINK_BODY}. `
+                  + 'Shorten it, or send the rest as a second message.'
+                : `${body.length} of ${MAX_LINK_BODY} characters.`}
+            </Typography.Text>
+          )}
 
           {(draft?.photos.length ?? 0) > 0 && (
             <Photos

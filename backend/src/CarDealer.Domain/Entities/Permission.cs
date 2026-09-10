@@ -88,6 +88,25 @@ public static class Permissions
     /// </remarks>
     public const string CustomersManage = "customers.manage";
 
+    /// <summary>Set this tenant's own retail price and commercial state on a car.</summary>
+    /// <remarks>
+    /// Distinct from <see cref="VehiclesSync"/>, which administers the shared catalogue. This
+    /// writes only the <c>TenantVehicle</c> overlay, which no other tenant can see, and it is
+    /// an ordinary selling act rather than an administrative one - the price a dealer asks is
+    /// the thing they change most often. Withheld from ReadOnly because a price is the one
+    /// number a customer is quoted.
+    /// </remarks>
+    public const string VehiclesPrice = "vehicles.price";
+
+    /// <summary>Create, edit and delete the tenant's message templates.</summary>
+    /// <remarks>
+    /// Held above Salesperson. A template is house wording used by everybody in the tenant, so
+    /// editing one changes what colleagues send tomorrow - which is a different act from
+    /// editing your own copy of a message before it goes, and that stays open to anyone who can
+    /// message a customer at all.
+    /// </remarks>
+    public const string MessagingTemplatesManage = "messaging.templates";
+
     public static readonly IReadOnlyDictionary<string, string> All = new Dictionary<string, string>
     {
         [TenantsRead] = "View tenant details and settings",
@@ -102,6 +121,8 @@ public static class Permissions
         [VehiclesMerge] = "Review suggested duplicate vehicles and merge them",
         [CustomersRead] = "View customers and their requirements",
         [CustomersManage] = "Create, edit and delete customers and requirements",
+        [VehiclesPrice] = "Set your own retail price on a car",
+        [MessagingTemplatesManage] = "Create, edit and delete message templates",
     };
 
     /// <summary>
@@ -122,15 +143,24 @@ public static class Permissions
             [
                 TenantsRead, UsersRead, UsersManage, RolesRead, RolesManage, AuditRead,
                 VehiclesRead, VehiclesSync, VehiclesMerge, CustomersRead, CustomersManage,
+                VehiclesPrice, MessagingTemplatesManage,
             ],
             // Sales Manager reads the catalog like everyone else but does not administer
             // sources: importing publishes cars into the shared catalog, which is Admin's call.
+            // Pricing and house wording are theirs, which is most of what managing sales is.
             [SystemRoles.SalesManager] =
-                [TenantsRead, UsersRead, RolesRead, VehiclesRead, CustomersRead, CustomersManage],
+            [
+                TenantsRead, UsersRead, RolesRead, VehiclesRead, CustomersRead, CustomersManage,
+                VehiclesPrice, MessagingTemplatesManage,
+            ],
             // Selling is the job. A salesperson who cannot record who they are selling to
-            // has no product here.
+            // has no product here, and one who cannot price a car cannot quote for it. The
+            // templates themselves stay above them: those are everybody's wording.
             [SystemRoles.Salesperson] =
-                [TenantsRead, UsersRead, VehiclesRead, CustomersRead, CustomersManage],
+            [
+                TenantsRead, UsersRead, VehiclesRead, CustomersRead, CustomersManage,
+                VehiclesPrice,
+            ],
 
             // ReadOnly can search. Withholding it would make the role useless in a product
             // whose main screen is a search.

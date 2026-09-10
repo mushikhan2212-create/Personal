@@ -96,12 +96,19 @@ public sealed class MessagingController : ControllerBase
             .ConfigureAwait(false) ?? string.Empty;
 
         Vehicle? vehicle = null;
+        TenantVehicle? overlay = null;
         var photos = Array.Empty<string>();
 
         if (request.VehiclePublicId is { } vehiclePublicId)
         {
             vehicle = await _db.Vehicles
                 .AsNoTracking()
+
+                // The listings come with it because {ListingUrl} reads them. Without the
+                // include they arrive as an empty collection and the placeholder silently
+                // resolves to nothing, which looks like a template that does not work rather
+                // than a query that forgot something.
+                .Include(v => v.Listings)
                 .FirstOrDefaultAsync(v => v.PublicId == vehiclePublicId, ct)
                 .ConfigureAwait(false);
 
@@ -113,6 +120,13 @@ public sealed class MessagingController : ControllerBase
                     Status = StatusCodes.Status404NotFound,
                 });
             }
+
+            // This tenant's own commercial state over the car, which is the only place a price
+            // may come from. The query filter scopes it to the caller's tenant.
+            overlay = await _db.TenantVehicles
+                .AsNoTracking()
+                .FirstOrDefaultAsync(o => o.VehicleId == vehicle.Id, ct)
+                .ConfigureAwait(false);
 
             // Returned so the compose screen can show them and offer them for download. They
             // are not put in the message: a click-to-chat link carries text only, and an image
@@ -127,11 +141,45 @@ public sealed class MessagingController : ControllerBase
                 .ConfigureAwait(false);
         }
 
-        var body = !string.IsNullOrWhiteSpace(request.Body)
-            ? request.Body
-            : vehicle is null
+        string? templateName = null;
+        string body;
+
+        if (!string.IsNullOrWhiteSpace(request.Body))
+        {
+            // The salesperson has edited it. Their text wins over any template, always - the
+            // whole point of the compose box is that the last word is a person's.
+            body = request.Body;
+        }
+        else if (request.TemplatePublicId is { } templatePublicId)
+        {
+            var template = await _db.MessageTemplates
+                .AsNoTracking()
+                .FirstOrDefaultAsync(t => t.PublicId == templatePublicId, ct)
+                .ConfigureAwait(false);
+
+            if (template is null)
+            {
+                return NotFound(new ProblemDetails
+                {
+                    Title = $"No message template with id '{templatePublicId}'.",
+                    Status = StatusCodes.Status404NotFound,
+                });
+            }
+
+            templateName = template.Name;
+
+            body = TemplateRenderer.Render(
+                template.Body, TemplateFields.For(customer, vehicle, overlay, tenantName));
+        }
+        else
+        {
+            // No template asked for. The built-in composer is the floor rather than the norm:
+            // every tenant is given starter templates, so this runs only for a caller that did
+            // not name one, or a dealer who has deleted the lot.
+            body = vehicle is null
                 ? MessageComposer.ForCustomer(customer, tenantName)
                 : MessageComposer.ForVehicle(customer, vehicle, tenantName);
+        }
 
         var dispatch = await _provider
             .DispatchAsync(new MessageDraft(customer.Phone, customer.CountryCode, body), ct)
@@ -149,6 +197,10 @@ public sealed class MessagingController : ControllerBase
             to = customer.Phone,
             normalizedPhone = dispatch.NormalizedPhone,
             body,
+
+            // Which template produced this draft, so the screen can show what it started from
+            // after the text has been edited beyond recognition.
+            templateName,
             canSend = dispatch.Kind != DispatchKind.Failed,
             handoffUrl = dispatch.HandoffUrl,
             reason = dispatch.Reason,
@@ -179,4 +231,14 @@ public sealed record MessageDraftRequest
     /// The message as edited by the salesperson. When absent, one is composed for them.
     /// </summary>
     public string? Body { get; init; }
+
+    /// <summary>
+    /// The template to compose from. Ignored when <see cref="Body"/> is supplied.
+    /// </summary>
+    /// <remarks>
+    /// Ignored rather than rejected in that case, because the screen sends both: it names the
+    /// template that produced the draft and then sends the edited text back on every keystroke.
+    /// Treating the pair as a conflict would make the ordinary path an error.
+    /// </remarks>
+    public Guid? TemplatePublicId { get; init; }
 }

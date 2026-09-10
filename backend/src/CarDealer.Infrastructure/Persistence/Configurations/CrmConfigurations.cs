@@ -187,3 +187,39 @@ public class RequirementAlertConfiguration : IEntityTypeConfiguration<Requiremen
         builder.HasIndex(a => new { a.TenantId, a.SeenAtUtc, a.MatchedAtUtc });
     }
 }
+
+public class MessageTemplateConfiguration : IEntityTypeConfiguration<MessageTemplate>
+{
+    public void Configure(EntityTypeBuilder<MessageTemplate> builder)
+    {
+        builder.ToTable("MessageTemplates");
+
+        builder.HasKey(t => t.Id);
+
+        builder.Property(t => t.PublicId).IsRequired();
+        builder.HasIndex(t => t.PublicId).IsUnique();
+
+        builder.Property(t => t.Name).HasMaxLength(80).IsRequired();
+        builder.Property(t => t.Channel).HasMaxLength(32).IsRequired();
+
+        // Comfortably past the 1,500-character ceiling WhatsAppLinkProvider enforces on the
+        // rendered link, because a template is longer than what it renders to: the placeholders
+        // and their fallbacks are written out in full here, and lines drop on the way out.
+        builder.Property(t => t.Body).HasMaxLength(4000).IsRequired();
+
+        builder.Property(t => t.CreatedAtUtc).HasPrecision(3).IsRequired();
+        builder.Property(t => t.UpdatedAtUtc).HasPrecision(3).IsRequired();
+
+        builder.HasOne(t => t.Tenant)
+            .WithMany()
+            .HasForeignKey(t => t.TenantId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Unique per tenant and channel, so the picker never shows two "Price quote" entries
+        // and nobody has to guess which one they last edited.
+        builder.HasIndex(t => new { t.TenantId, t.Channel, t.Name }).IsUnique();
+
+        // The picker query: this tenant's templates for one channel, in display order.
+        builder.HasIndex(t => new { t.TenantId, t.Channel, t.SortOrder });
+    }
+}

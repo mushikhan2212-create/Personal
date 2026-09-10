@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { App as AntApp, ConfigProvider, message } from 'antd';
 import { AlertsPage } from './pages/AlertsPage';
 import { DuplicatesPage } from './pages/DuplicatesPage';
+import { TemplatesPage } from './pages/TemplatesPage';
 import { AppShell } from './components/AppShell';
 import type { NavKey } from './components/AppShell';
 import { CustomerDetailPage } from './pages/CustomerDetailPage';
@@ -165,6 +166,8 @@ export function App() {
                 />
               )}
 
+              {view.name === 'templates' && <TemplatesPage />}
+
               {view.name === 'customer' && (
                 <CustomerDetailPage
                   publicId={view.id}
@@ -179,6 +182,7 @@ export function App() {
                   id={view.id}
                   onBack={() => setView({ name: 'search' })}
                   canMessage={session.permissions.includes('customers.manage')}
+                  canPrice={session.permissions.includes('vehicles.price')}
                 />
               )}
 

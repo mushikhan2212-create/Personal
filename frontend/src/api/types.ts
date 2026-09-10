@@ -418,6 +418,8 @@ export interface MessageDraft {
   /** Digits-only international form, or null when it could not be determined. */
   normalizedPhone: string | null;
   body: string;
+  /** Which template produced this draft, or null when nothing did. */
+  templateName: string | null;
   canSend: boolean;
   handoffUrl: string | null;
   /** Why no message could be prepared, in words a salesperson can act on. */
@@ -512,4 +514,42 @@ export interface MergeRecord {
   mergedBy: string | null;
   surviving: { publicId: string; make: string | null; model: string | null; modelYear: number | null } | null;
   archived: { publicId: string; make: string | null; model: string | null; modelYear: number | null } | null;
+}
+
+// --- Message templates --------------------------------------------------------------------
+
+/**
+ * A reusable message the dealer starts from.
+ *
+ * Not a WhatsApp Business template, which is a Meta-approved artefact tied to the Business API.
+ * This is the dealer's own wording, and it stays a draft: the rendered text lands in an editable
+ * box and nothing sends until a person presses send.
+ */
+export interface MessageTemplate {
+  id: string;
+  name: string;
+  body: string;
+  sortOrder: number;
+  /** True when the body names any vehicle field, so it cannot render without a car. */
+  needsVehicle: boolean;
+  /**
+   * True when the body carries `{ListingUrl}`.
+   *
+   * Allowed, and worth showing back every time: the URL names the exporter, so a customer who
+   * follows it can buy direct.
+   */
+  revealsSource: boolean;
+}
+
+/** One placeholder a template may carry, as offered by the editor. */
+export interface TemplatePlaceholder {
+  name: string;
+  description: string;
+  needsVehicle: boolean;
+}
+
+export interface MessageTemplateList {
+  items: MessageTemplate[];
+  /** The legal placeholder set, served by the API so it cannot drift from the renderer. */
+  placeholders: TemplatePlaceholder[];
 }

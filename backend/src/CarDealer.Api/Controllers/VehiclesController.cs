@@ -1,5 +1,6 @@
 using Asp.Versioning;
 using CarDealer.Api.Authorization;
+using CarDealer.Application.Abstractions;
 using CarDealer.Application.Search;
 using CarDealer.Domain.Entities;
 using CarDealer.Domain.Enums;
@@ -23,11 +24,14 @@ public sealed class VehiclesController : ControllerBase
 
     private readonly ISearchProvider _search;
     private readonly CarDealerDbContext _db;
+    private readonly ITenantContext _tenantContext;
 
-    public VehiclesController(ISearchProvider search, CarDealerDbContext db)
+    public VehiclesController(
+        ISearchProvider search, CarDealerDbContext db, ITenantContext tenantContext)
     {
         _search = search;
         _db = db;
+        _tenantContext = tenantContext;
     }
 
     /// <summary>Searches the catalog visible to the caller's tenant.</summary>
@@ -248,6 +252,102 @@ public sealed class VehiclesController : ControllerBase
         return Ok(VehicleDetail.From(vehicle, overlay));
     }
 
+    /// <summary>Sets this tenant's own retail price for a car.</summary>
+    /// <remarks>
+    /// <para>
+    /// Writes the <c>TenantVehicle</c> overlay and nothing else. The catalogue row carries what
+    /// the <b>exporter</b> asks; this is what the dealer sells at, and decision D1 separated the
+    /// two precisely so that a shared car can carry a private margin. Nothing here is visible to
+    /// another tenant.
+    /// </para>
+    ///
+    /// <para>
+    /// The overlay is created on first write rather than seeded for every car, because most of
+    /// a 100,000-row catalogue will never be priced by any one dealer.
+    /// </para>
+    ///
+    /// <para>
+    /// A null price clears it, which is not the same as zero. Clearing means "I have not priced
+    /// this", and a quote template renders no price line at all; zero would render "USD 0".
+    /// </para>
+    /// </remarks>
+    [HttpPut("{publicId:guid}/pricing")]
+    [HasPermission(Permissions.VehiclesPrice)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> SetPricing(
+        Guid publicId, [FromBody] SetVehiclePricingRequest request, CancellationToken ct)
+    {
+        if (request.TenantPrice is < 0)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "A price cannot be negative.",
+                Status = StatusCodes.Status400BadRequest,
+            });
+        }
+
+        var vehicleId = await _db.Vehicles
+            .Where(v => v.PublicId == publicId)
+            .Select(v => (long?)v.Id)
+            .FirstOrDefaultAsync(ct)
+            .ConfigureAwait(false);
+
+        if (vehicleId is null)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = "No such vehicle.",
+                Status = StatusCodes.Status404NotFound,
+            });
+        }
+
+        var overlay = await _db.TenantVehicles
+            .FirstOrDefaultAsync(o => o.VehicleId == vehicleId, ct)
+            .ConfigureAwait(false);
+
+        if (overlay is null)
+        {
+            overlay = new TenantVehicle
+            {
+                TenantId = _tenantContext.TenantId,
+                VehicleId = vehicleId.Value,
+            };
+
+            _db.TenantVehicles.Add(overlay);
+        }
+
+        overlay.TenantPrice = request.TenantPrice;
+
+        // Falls back to the tenant's own default currency rather than to a hard-coded one, so a
+        // dealer quoting in yen does not have to restate it on every car.
+        overlay.TenantCurrencyCode = request.TenantPrice is null
+            ? null
+            : request.TenantCurrencyCode?.Trim().ToUpperInvariant()
+                ?? overlay.TenantCurrencyCode
+                ?? await _db.Tenants
+                    .IgnoreQueryFilters()
+                    .Where(t => t.Id == _tenantContext.TenantId)
+                    .Select(t => t.DefaultCurrencyCode)
+                    .FirstOrDefaultAsync(ct)
+                    .ConfigureAwait(false);
+
+        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+        return Ok(new { tenantPrice = overlay.TenantPrice, tenantCurrencyCode = overlay.TenantCurrencyCode });
+    }
+}
+
+/// <summary>What a dealer sells one car at.</summary>
+public sealed record SetVehiclePricingRequest
+{
+    /// <summary>The retail price, or null to clear it.</summary>
+    public decimal? TenantPrice { get; init; }
+
+    /// <summary>ISO 4217. Defaults to the tenant's own currency when omitted.</summary>
+    public string? TenantCurrencyCode { get; init; }
 }
 
 /// <summary>One vehicle, in full.</summary>

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
-  Alert, Button, Card, Col, Empty, Flex, Image, Row, Space, Spin, Table, Tag, Tooltip,
-  Typography,
+  Alert, App as AntApp, Button, Card, Col, Empty, Flex, Image, Input, Row, Space, Spin, Table,
+  Tag, Tooltip, Typography,
 } from 'antd';
-import { getVehicle } from '../api/client';
+import { getVehicle, setVehiclePricing } from '../api/client';
 import { WhatsAppButton } from '../components/WhatsAppButton';
 import { WhatsAppDrawer } from '../components/WhatsAppDrawer';
 import type { CanonicalHashSource, VehicleDetail, VehicleDetailListing } from '../api/types';
@@ -14,6 +14,8 @@ interface Props {
   onBack: () => void;
   /** Whether this user may message customers. The button is hidden rather than disabled. */
   canMessage: boolean;
+  /** Whether this user may set the retail price. Hidden rather than disabled, likewise. */
+  canPrice: boolean;
 }
 
 /** What deduplication matched this car on, in the words a person would use. */
@@ -47,7 +49,7 @@ const MISSING_PHOTO = 'data:image/svg+xml;utf8,'
     + 'text-anchor="middle">No photo</text></svg>',
   );
 
-export function VehicleDetailPage({ id, onBack, canMessage }: Props) {
+export function VehicleDetailPage({ id, onBack, canMessage, canPrice }: Props) {
   const [vehicle, setVehicle] = useState<VehicleDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -213,11 +215,13 @@ export function VehicleDetailPage({ id, onBack, canMessage }: Props) {
                 )}
               </Flex>
 
-              {vehicle.tenantPrice !== null && (
-                <Typography.Text type="success">
-                  Your price: {money(vehicle.tenantPrice, vehicle.tenantCurrencyCode)}
-                </Typography.Text>
-              )}
+              <YourPrice
+                vehicle={vehicle}
+                canPrice={canPrice}
+                onSaved={(price, currency) =>
+                  setVehicle((v) =>
+                    v === null ? v : { ...v, tenantPrice: price, tenantCurrencyCode: currency })}
+              />
 
               <div style={{ borderTop: '1px solid var(--app-stroke)', paddingTop: 16 }}>
                 <Row gutter={[12, 14]}>
@@ -293,6 +297,104 @@ export function VehicleDetailPage({ id, onBack, canMessage }: Props) {
         </Row>
       </Card>
     </Space>
+  );
+}
+
+/**
+ * What you sell this car at, as opposed to what the exporter asks for it.
+ *
+ * Two different numbers, and the distinction is the point of the overlay: the listing price
+ * above is the supplier's, and this one is yours. It is also the only number a message template
+ * will ever quote — `{Price}` reads this and nothing else, so a car left unpriced simply has no
+ * price line in a quote rather than leaking what you paid.
+ */
+function YourPrice({ vehicle, canPrice, onSaved }: {
+  vehicle: VehicleDetail;
+  canPrice: boolean;
+  onSaved: (price: number | null, currency: string | null) => void;
+}) {
+  const { message } = AntApp.useApp();
+
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState<string>(vehicle.tenantPrice?.toString() ?? '');
+  const [saving, setSaving] = useState(false);
+
+  const save = async (): Promise<void> => {
+    const trimmed = value.trim();
+    const parsed = trimmed === '' ? null : Number(trimmed);
+
+    if (parsed !== null && (Number.isNaN(parsed) || parsed < 0)) {
+      message.error('That is not a price.');
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const saved = await setVehiclePricing(vehicle.id, parsed, vehicle.tenantCurrencyCode);
+
+      onSaved(saved.tenantPrice, saved.tenantCurrencyCode);
+      setEditing(false);
+
+      void message.success(parsed === null ? 'Price cleared.' : 'Price saved.');
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : 'Could not save the price.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!canPrice) {
+    return vehicle.tenantPrice === null ? null : (
+      <Typography.Text type="success">
+        Your price: {money(vehicle.tenantPrice, vehicle.tenantCurrencyCode)}
+      </Typography.Text>
+    );
+  }
+
+  if (editing) {
+    return (
+      <Flex gap={8} align="center" wrap>
+        <Input
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onPressEnter={() => void save()}
+          prefix={vehicle.tenantCurrencyCode ?? undefined}
+          placeholder="Leave empty to clear"
+          style={{ maxWidth: 200 }}
+        />
+
+        <Button type="primary" size="small" loading={saving} onClick={() => void save()}>
+          Save
+        </Button>
+
+        <Button
+          size="small"
+          onClick={() => { setValue(vehicle.tenantPrice?.toString() ?? ''); setEditing(false); }}
+        >
+          Cancel
+        </Button>
+      </Flex>
+    );
+  }
+
+  return (
+    <Flex gap={8} align="center" wrap>
+      {vehicle.tenantPrice === null ? (
+        <Typography.Text type="secondary">
+          You have not set your price for this car.
+        </Typography.Text>
+      ) : (
+        <Typography.Text type="success">
+          Your price: {money(vehicle.tenantPrice, vehicle.tenantCurrencyCode)}
+        </Typography.Text>
+      )}
+
+      <Button size="small" type="link" onClick={() => setEditing(true)} style={{ padding: 0 }}>
+        {vehicle.tenantPrice === null ? 'Set a price' : 'Change'}
+      </Button>
+    </Flex>
   );
 }
 

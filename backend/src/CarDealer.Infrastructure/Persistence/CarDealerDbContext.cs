@@ -68,6 +68,8 @@ public class CarDealerDbContext : DbContext
 
     public DbSet<CustomerNote> CustomerNotes => Set<CustomerNote>();
 
+    public DbSet<MessageTemplate> MessageTemplates => Set<MessageTemplate>();
+
     public DbSet<RequirementAlert> RequirementAlerts => Set<RequirementAlert>();
 
     public DbSet<Make> Makes => Set<Make>();
@@ -179,6 +181,11 @@ public class CarDealerDbContext : DbContext
 
         // An alert names a customer's requirement, so it is as private as the customer is.
         modelBuilder.Entity<RequirementAlert>()
+            .HasQueryFilter(e => e.TenantId == _tenantContext.TenantIdOrZero);
+
+        // A message template carries the dealer's own wording, their sign-off, and often the
+        // price they sell at. None of that is catalogue data.
+        modelBuilder.Entity<MessageTemplate>()
             .HasQueryFilter(e => e.TenantId == _tenantContext.TenantIdOrZero);
 
         // UserVehicleSourcePreference is deliberately absent from this list. It is keyed by

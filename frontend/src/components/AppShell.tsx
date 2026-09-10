@@ -6,7 +6,7 @@ import type { Session } from '../App';
 
 /** The screens the sidebar can reach. Kept as a union so a typo is a build error. */
 export type NavKey =
-  'search' | 'customers' | 'alerts' | 'duplicates' | 'my-sources' | 'import';
+  'search' | 'customers' | 'alerts' | 'duplicates' | 'templates' | 'my-sources' | 'import';
 
 interface Props {
   session: Session;
@@ -45,6 +45,7 @@ export function AppShell({
   const canSync = session.permissions.includes('vehicles.sync');
   const canSeeCustomers = session.permissions.includes('customers.read');
   const canMerge = session.permissions.includes('vehicles.merge');
+  const canEditTemplates = session.permissions.includes('messaging.templates');
 
   const items = [
     { key: 'search', icon: <SearchGlyph />, label: 'Vehicles' },
@@ -69,6 +70,11 @@ export function AppShell({
     // reviewing duplicates is housekeeping on the catalogue, not part of anybody's day.
     ...(canMerge
       ? [{ key: 'duplicates', icon: <MergeGlyph />, label: 'Duplicates' }]
+      : []),
+    // House wording rather than a per-message concern, so it sits with the settings-shaped
+    // screens rather than beside Customers.
+    ...(canEditTemplates
+      ? [{ key: 'templates', icon: <TemplateGlyph />, label: 'Message templates' }]
       : []),
     { key: 'my-sources', icon: <SourcesGlyph />, label: 'My sources' },
     ...(canSync ? [{ key: 'import', icon: <ImportGlyph />, label: 'Import' }] : []),
@@ -313,6 +319,18 @@ function MergeGlyph({ className }: GlyphProps) {
       <path {...stroke} d="M18 3v4c0 2.2-1.8 4-4 4h-4" />
       <path {...stroke} d="M12 11v10" />
       <path {...stroke} d="M9 18l3 3 3-3" />
+    </svg>
+  );
+}
+
+/** A sheet with lines of text on it — a written message, rather than a chat bubble. */
+function TemplateGlyph({ className }: GlyphProps) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" className={className}>
+      <path {...stroke} d="M5 4h14v16H5z" />
+      <path {...stroke} d="M8 9h8" />
+      <path {...stroke} d="M8 13h8" />
+      <path {...stroke} d="M8 17h4" />
     </svg>
   );
 }

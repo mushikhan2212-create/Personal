@@ -1,4 +1,5 @@
 using CarDealer.Application.Abstractions;
+using CarDealer.Application.Messaging;
 using CarDealer.Domain.Entities;
 using CarDealer.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -474,6 +475,24 @@ public sealed class DatabaseSeeder
         };
 
         _db.Tenants.Add(tenant);
+        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+        // Only on the branch that just created the tenant, never on the early return above.
+        // Message templates are the dealer's own words, so the same rule the vehicle sources
+        // learned applies: give a brand-new tenant somewhere to start, then never touch the
+        // list again. A template somebody deleted has to stay deleted across a restart.
+        foreach (var starter in StarterTemplates.All)
+        {
+            _db.MessageTemplates.Add(new MessageTemplate
+            {
+                TenantId = tenant.Id,
+                Name = starter.Name,
+                Channel = "whatsapp",
+                Body = starter.Body,
+                SortOrder = starter.SortOrder,
+            });
+        }
+
         await _db.SaveChangesAsync(ct).ConfigureAwait(false);
 
         _logger.LogInformation("Seeded tenant {TenantSlug}.", slug);
