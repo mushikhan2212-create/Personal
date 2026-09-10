@@ -10,7 +10,7 @@ needs a named owner and a date — an item with neither is not tracked, it is fo
 | # | Item | Kind | Blocks | Owner | Due |
 | --- | --- | --- | --- | --- | --- |
 | [O1](#o1--media-redistribution-rights) | Media redistribution rights | Legal | Phase 1 media | _unassigned_ | _unset_ |
-| [O2](#o2--carapis-licensing-gate) | Carapis licensing gate | Legal | Phase 1 | _unassigned_ | _unset_ |
+| ~~O2~~ | ~~Carapis licensing gate~~ | Legal | — | **Closed** | Not using Carapis, see [O2](#o2--carapis-licensing-gate) |
 | [O3](#o3--pii-and-data-protection) | PII and data protection | Legal/Eng | Production | _unassigned_ | _unset_ |
 | [O4](#o4--pii-redaction-before-ai-calls) | PII redaction before AI calls | Eng | Phase 2 | _unassigned_ | _unset_ |
 | [O5](#o5--billing-metering-and-quotas) | Billing, metering and quotas | Product/Eng | Commercial launch | _unassigned_ | _unset_ |
@@ -46,19 +46,54 @@ This is a legal question. Do not let it be answered by whoever writes the media 
 
 ## O2 — Carapis licensing gate
 
-Master prompt §8 requires the POC report to *document* unresolved licensing questions. Documenting
-is not resolving. As written, an unanswerable legal question passes the gate and Phase 1 gets
-built on a provider that may not be usable commercially.
+**Closed 2026-09-10: the product is not using Carapis.** The owner decided against it, which
+answers the licensing question by removing it rather than resolving it. Nothing is owed to
+anybody here.
 
-**Change needed:** §8 should require licensing questions **resolved** before Phase 1 starts, with:
+The original concern is kept below because it explains why the fallback existed to fall back
+*to*, and that is the part worth remembering.
 
-- a named owner for the Carapis commercial conversation
-- a date by which an answer is required
-- a stated fallback path if the answer is no — direct partner feeds (BE FORWARD, SBT, TCV) plus
-  dealer CSV/Excel/XML/FTP, all of which are already in master prompt §6's adapter list
+> Master prompt §8 requires the POC report to *document* unresolved licensing questions.
+> Documenting is not resolving. As written, an unanswerable legal question passes the gate and
+> Phase 1 gets built on a provider that may not be usable commercially.
+>
+> **Change needed:** §8 should require licensing questions **resolved** before Phase 1 starts,
+> with a named owner for the Carapis commercial conversation, a date by which an answer is
+> required, and a stated fallback path if the answer is no — direct partner feeds (BE FORWARD,
+> SBT, TCV) plus dealer CSV/Excel/XML/FTP, all of which are already in master prompt §6's
+> adapter list.
+>
+> The architecture already survives a "no" — that is the entire point of
+> `IVehicleSourceProvider`. What is missing is the trigger that makes anyone act on it.
 
-The architecture already survives a "no" — that is the entire point of
-`IVehicleSourceProvider`. What is missing is the trigger that makes anyone act on it.
+That fallback is now the primary path, and it was never hypothetical: the entire Phase 0.5
+evidence base — 104 listings across BE FORWARD and SBT Japan, and every duplicate-detection
+finding drawn from it ([09-poc-evaluation.md](09-poc-evaluation.md)) — came through the file
+import route, not through Carapis. Dropping the provider costs the project no data and no
+proven behaviour.
+
+**What is left behind, deliberately.** The `CarDealer.Integrations/Carapis` adapter, its
+normalizer and their tests remain in the tree, because `IVehicleSourceProvider` is only
+demonstrably an abstraction while something other than the file importer implements it. Delete
+Carapis and the interface has one implementation, at which point the next provider — a real
+exporter feed — gets built against a shape that was never tested against two. No credential is
+configured and nothing calls it at runtime; it is compiled and tested code, not a live
+integration.
+
+**One loose end this closure exposes, which is not documentation.** `DatabaseSeeder` registers
+two *shared* sources typed `Carapis` — `sbtjapan` and `goonet_exchange` — in every environment.
+With Carapis dropped, those rows can now never receive data by any route the product still
+uses: a JSON import against them returns 400 by design
+([08-import-format.md](08-import-format.md)), and a sync would resolve a normalizer for an API
+nobody holds a key to. A fresh database therefore ships two dead sources that a user can see
+and select.
+
+That also does not square with the Phase 0.5 evidence, which reports 49 listings under the code
+`sbtjapan` loaded through the file importer — the exact combination the guard is supposed to
+reject. Either the seeded row was altered by hand in the working database or the guard has a
+gap. **Unverified: the live database was not reachable when this was written, and the question
+is which of those two it is.** Worth settling before the seeded types are changed, because the
+answer decides whether the fix is a one-line seed change or a hole in an import guard.
 
 ## O3 — PII and data protection
 

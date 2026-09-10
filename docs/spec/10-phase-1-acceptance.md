@@ -122,13 +122,13 @@ fires an alert per matching car — 46 of them against the real catalogue.
 
 ## G. What gates Phase 2
 
-These are open **after** this document is signed. Phase 2 is entirely about sending data to a
-model, so the first is not deferrable.
+These were open when this document was drafted. Phase 2 is entirely about sending data to a
+model, so the first is not deferrable; two of the four have since closed.
 
 | # | Item | Why it blocks |
 | --- | --- | --- |
 | G1 | [O4](05-open-items.md#o4--pii-redaction-before-ai-calls) — PII redaction before AI calls | Every Phase 2 feature sends customer data somewhere. Nobody has decided what may leave. |
-| G2 | [O2](05-open-items.md#o2--carapis-licensing-gate) — Carapis licensing | Its own text says resolve **before Phase 1 starts**. It was not resolved and Phase 1 was built anyway. The architecture survives a "no"; the commercial exposure is real. |
+| ~~G2~~ | ~~[O2](05-open-items.md#o2--carapis-licensing-gate) — Carapis licensing~~ | **Closed** — the owner decided against using Carapis, which answers the question by removing it. The fallback the open item named was never hypothetical: the whole Phase 0.5 evidence base came through the file import route, so nothing is lost. Left a follow-up on O2 about two now-dead seeded sources. |
 | ~~G3~~ | ~~[O8](05-open-items.md#o8--publicid-coverage) — `PublicId` coverage~~ | **Closed** as [D17](02-decisions.md#d17--top-level-route-identifiers-are-guids-nested-ones-may-be-integers). Phase 1 first made this worse — two more integer-keyed routes — then settled it: top-level routes take a GUID, nested ones may keep an integer because the parent's GUID already gates them. Enforced by `RouteIdentifierTests`. |
 | G4 | WhatsApp Business API approval | Four of Phase 2's seven features need *inbound* messages, which D15's click-to-chat path structurally cannot see. Weeks of lead time; nothing has been applied for. |
 
