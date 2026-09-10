@@ -263,6 +263,30 @@ public sealed class TemplateRendererTests
     }
 
     [Fact]
+    public void A_scraped_variant_does_not_bring_its_whitespace_into_the_sentence()
+    {
+        // Found by reading a real message rather than by reasoning: Variant on this catalogue is
+        // a fragment of the exporter's listing title, and one of them is
+        // "2017   1.6 CVT PUSHSTART NAVI REVCAM". A run of spaces nobody notices in a table cell
+        // reads as a typo in the middle of a sentence sent to a customer.
+        var values = TemplateFields.For(
+            new Customer { FirstName = "Imran" },
+            new Vehicle
+            {
+                Make = "TOYOTA",
+                Model = "Corolla Altis",
+                Variant = "2017   1.6 CVT PUSHSTART NAVI REVCAM",
+            },
+            overlay: null,
+            "Nihon Motors");
+
+        var text = TemplateRenderer.Render("About the {Vehicle}.", values);
+
+        Assert.DoesNotContain("  ", text);
+        Assert.Equal("About the TOYOTA Corolla Altis 2017 1.6 CVT PUSHSTART NAVI REVCAM.", text);
+    }
+
+    [Fact]
     public void An_unknown_specification_drops_its_line_rather_than_saying_Unknown()
     {
         var values = TemplateFields.For(

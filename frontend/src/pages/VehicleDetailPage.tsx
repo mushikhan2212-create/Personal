@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
-  Alert, App as AntApp, Button, Card, Col, Empty, Flex, Image, Input, Row, Space, Spin, Table,
-  Tag, Tooltip, Typography,
+  Alert, App as AntApp, Button, Card, Col, Empty, Flex, Image, Input, Row, Select, Space, Spin,
+  Table, Tag, Tooltip, Typography,
 } from 'antd';
 import { getVehicle, setVehiclePricing } from '../api/client';
 import { WhatsAppButton } from '../components/WhatsAppButton';
@@ -39,6 +39,14 @@ const money = (amount: number | null, currency: string | null): string => {
     return `${amount.toLocaleString()} ${currency ?? ''}`.trim();
   }
 };
+
+/**
+ * What a broker in this trade actually quotes in.
+ *
+ * USD first because export deals are priced in it whatever the stock cost in yen. Short on
+ * purpose: a list of every ISO code would bury the four that get used.
+ */
+const QUOTE_CURRENCIES = ['USD', 'JPY', 'EUR', 'GBP', 'AED', 'PKR', 'KES', 'TZS'];
 
 /** Shown in place of a photo that will not load. Inline so it needs no network of its own. */
 const MISSING_PHOTO = 'data:image/svg+xml;utf8,'
@@ -317,6 +325,7 @@ function YourPrice({ vehicle, canPrice, onSaved }: {
 
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState<string>(vehicle.tenantPrice?.toString() ?? '');
+  const [currency, setCurrency] = useState<string>(vehicle.tenantCurrencyCode ?? 'USD');
   const [saving, setSaving] = useState(false);
 
   const save = async (): Promise<void> => {
@@ -331,7 +340,7 @@ function YourPrice({ vehicle, canPrice, onSaved }: {
     setSaving(true);
 
     try {
-      const saved = await setVehiclePricing(vehicle.id, parsed, vehicle.tenantCurrencyCode);
+      const saved = await setVehiclePricing(vehicle.id, parsed, currency);
 
       onSaved(saved.tenantPrice, saved.tenantCurrencyCode);
       setEditing(false);
@@ -360,9 +369,21 @@ function YourPrice({ vehicle, canPrice, onSaved }: {
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onPressEnter={() => void save()}
-          prefix={vehicle.tenantCurrencyCode ?? undefined}
           placeholder="Leave empty to clear"
-          style={{ maxWidth: 200 }}
+          style={{ maxWidth: 170 }}
+        />
+
+        {/*
+          Selectable rather than inherited from the tenant. A Japanese-export broker buys in yen
+          and quotes in dollars, so defaulting to the tenant's own currency and offering no way
+          to change it puts the wrong currency in front of the customer — which is a worse
+          error than the wrong number, because it reads as though it were right.
+        */}
+        <Select
+          value={currency}
+          onChange={setCurrency}
+          style={{ width: 96 }}
+          options={QUOTE_CURRENCIES.map((c) => ({ value: c, label: c }))}
         />
 
         <Button type="primary" size="small" loading={saving} onClick={() => void save()}>

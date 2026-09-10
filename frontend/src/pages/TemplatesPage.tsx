@@ -114,12 +114,18 @@ export function TemplatesPage() {
                     )}
                   </Flex>
 
+                  {/*
+                    Blank lines collapsed for the card only. They are what makes the message
+                    readable on a phone and what makes this four-row preview useless — two of
+                    the four rows would be empty, so a card would show a greeting and nothing
+                    else. The stored body keeps them.
+                  */}
                   <Typography.Paragraph
                     type="secondary"
-                    style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 12 }}
-                    ellipsis={{ rows: 4 }}
+                    style={{ margin: 0, fontSize: 12 }}
+                    ellipsis={{ rows: 3 }}
                   >
-                    {t.body}
+                    {t.body.replace(/\s*\n\s*/g, ' ')}
                   </Typography.Paragraph>
                 </Flex>
 

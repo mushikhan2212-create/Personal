@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using CarDealer.Application.Formatting;
 using CarDealer.Domain.Entities;
 using CarDealer.Domain.Enums;
@@ -13,7 +14,7 @@ namespace CarDealer.Application.Messaging;
 /// dictionary without building a catalogue, and so the one commercially dangerous decision in
 /// this feature - where <c>{Price}</c> comes from - sits by itself where it can be read.
 /// </remarks>
-public static class TemplateFields
+public static partial class TemplateFields
 {
     /// <summary>
     /// Builds the value set for one customer and, optionally, one car.
@@ -45,9 +46,9 @@ public static class TemplateFields
             return values;
         }
 
-        values["Make"] = vehicle.Make;
-        values["Model"] = vehicle.Model;
-        values["Variant"] = vehicle.Variant;
+        values["Make"] = Clean(vehicle.Make);
+        values["Model"] = Clean(vehicle.Model);
+        values["Variant"] = Clean(vehicle.Variant);
         values["Vehicle"] = Describe(vehicle);
         values["Year"] = vehicle.ModelYear?.ToString(CultureInfo.InvariantCulture);
         values["Colour"] = vehicle.ExteriorColor;
@@ -100,10 +101,35 @@ public static class TemplateFields
         where T : struct, Enum
         => EqualityComparer<T>.Default.Equals(value, unknown) ? null : word(value);
 
+    /// <summary>
+    /// Collapses the whitespace a scraped field arrives with.
+    /// </summary>
+    /// <remarks>
+    /// Not cosmetic. <c>Variant</c> on this catalogue is a fragment of the exporter's own listing
+    /// title - real values include "2017&#160;&#160;&#160;1.6 CVT PUSHSTART NAVI REVCAM" - and a
+    /// run of spaces that goes unnoticed in a table cell reads as a typo in the middle of a
+    /// sentence somebody sends to a customer. Internal runs collapse to one space; the words
+    /// themselves are left exactly as the source wrote them, because correcting a dealer's model
+    /// naming is not this method's business.
+    /// </remarks>
+    private static string? Clean(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return WhitespaceRun().Replace(value.Trim(), " ");
+    }
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex WhitespaceRun();
+
     private static string? Describe(Vehicle vehicle)
     {
         var name = string.Join(' ', new[] { vehicle.Make, vehicle.Model, vehicle.Variant }
-            .Where(p => !string.IsNullOrWhiteSpace(p)));
+            .Select(Clean)
+            .Where(p => p is not null));
 
         return string.IsNullOrWhiteSpace(name) ? null : name;
     }
