@@ -58,8 +58,38 @@ dotnet user-secrets set "AI:Provider" "groq"
 dotnet user-secrets set "AI:Model" "<the model id>"
 ```
 
-User secrets live outside the repository, so they cannot be committed by accident. Note the
-single colon: that form is the configuration path itself, not the environment-variable spelling.
+Note the single colon: that form is the configuration path itself, not the environment-variable
+spelling. Both forms bind to the same settings.
+
+Those commands write one file, which you can equally write by hand. The project's
+`UserSecretsId` is **`cardealer-api-phase0`**, so it lives at:
+
+| OS | Path |
+| --- | --- |
+| Windows | `%APPDATA%\Microsoft\UserSecrets\cardealer-api-phase0\secrets.json` |
+| Linux / macOS | `~/.microsoft/usersecrets/cardealer-api-phase0/secrets.json` |
+
+```json
+{
+  "AI": {
+    "Provider": "groq",
+    "Model": "<the model id>",
+    "ApiKey": "<your key>",
+    "MaxCandidates": 8,
+    "MaxTokens": 1200
+  }
+}
+```
+
+**User secrets live outside the repository, which is the whole point** — they cannot be committed
+by accident, by the CLI or by the GitHub web editor.
+
+They are read only when the environment is Development, which every launch profile sets. They are
+also read only by the process that has that `UserSecretsId`: the API, which is the only thing that
+ranks. The worker has its own id and needs none of this.
+
+**Do not set both this and `backend/.env`.** They feed different ways of starting the API, and
+keeping two copies of a key is how one of them goes stale and costs you an afternoon.
 
 **Check it took.** Rank any requirement and look at the response, or the screen: if
 `providerConfigured` is false, the application never saw the key, whatever the file says.
