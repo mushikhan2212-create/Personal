@@ -27,7 +27,7 @@ namespace CarDealer.Application.AI;
 public static class RankingPrompt
 {
     /// <summary>Bump on any change to the instructions or the schema below.</summary>
-    public const string Version = "rank-v1";
+    public const string Version = "rank-v2";
 
     /// <summary>
     /// The standing instructions. Stable across calls, which is what makes it cacheable.
@@ -50,13 +50,17 @@ public static class RankingPrompt
            budget" - every number you write must appear verbatim in that vehicle's fields or in
            the requirement. Comparative words are fine without arithmetic: "the lower mileage
            of the two" needs no figure at all.
-        4. Prefer the car that best satisfies what the customer asked for. Where the data is
+        4. Never put another vehicle's figures in this vehicle's reasons. Compare in words -
+           "the lowest mileage of the group", "the newest here" - and never "newer than the
+           2016 one" or "12,000 km less than the other Axio".
+        5. Prefer the car that best satisfies what the customer asked for. Where the data is
            equal, prefer lower mileage, then newer, then cheaper.
-        5. A vehicle offered by more than one source is more likely to still be available. That
+        6. A vehicle offered by more than one source is more likely to still be available. That
            is weak evidence about availability only - it says nothing about condition.
-        6. Reasons are for the broker, not the customer. Write two or three short phrases, no
+        7. Reasons are for the broker, not the customer. Write two or three short phrases, no
            sentences of praise, no sales language. "48,000 km, well under the limit" is useful;
-           "a fantastic opportunity" is not.
+           "a fantastic opportunity" is not. Write plain English, never the name of a data
+           field: "3 sources list it", not "offerCount 3"; "hybrid", not "Hybrid fuel type".
 
         Score each vehicle from 0 to 1 for how well it fits the requirement. Rank 1 is the best
         fit. Ranks must run 1, 2, 3 with no gaps and no repeats.

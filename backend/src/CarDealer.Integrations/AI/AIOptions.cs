@@ -45,6 +45,16 @@ public sealed class AIOptions
     /// </remarks>
     public int TimeoutSeconds { get; set; } = 30;
 
+    /// <summary>Ceiling on the response, in tokens.</summary>
+    /// <remarks>
+    /// Configurable because it is not purely ours to choose. Probing Groq's lineup turned up a
+    /// model that rejects the request outright when this exceeds its own cap - a 400 saying
+    /// "max_tokens must be...", not a truncated answer - so a hard-coded value silently rules
+    /// out otherwise usable models. The default leaves room for twenty cars at three short
+    /// reasons each, with margin: hitting the cap truncates mid-JSON and wastes the whole call.
+    /// </remarks>
+    public int MaxTokens { get; set; } = 8_000;
+
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(Provider)
         && !string.IsNullOrWhiteSpace(ApiKey)

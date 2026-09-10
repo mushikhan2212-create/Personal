@@ -54,10 +54,7 @@ public sealed class AnthropicRankingProvider : IAIProvider
             {
                 Model = _options.Model,
 
-                // Room for twenty cars at three short reasons each, with margin. Hitting the
-                // cap truncates mid-JSON, which the parser then rejects - so the cost of being
-                // stingy here is a wasted call, not a shorter answer.
-                MaxTokens = 8_000,
+                MaxTokens = _options.MaxTokens,
 
                 // The standing instructions, kept out of the user turn so they stay identical
                 // between calls. No cache breakpoint: this prompt is well below the minimum

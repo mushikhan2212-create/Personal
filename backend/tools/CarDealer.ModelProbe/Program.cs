@@ -98,9 +98,18 @@ foreach (var model in models)
 
     results.Add(new Result(model, verdict == "OK", verdict, stopwatch.ElapsedMilliseconds, answer));
 
+    // Printed in full, deliberately. The first run of this truncated at 60 characters and hid
+    // which vehicle a rejected figure belonged to - the one thing needed to tell a hallucination
+    // apart from a guard that is too strict. A probe that withholds the diagnosis is a worse
+    // tool than no probe.
     Console.WriteLine(verdict == "OK"
         ? $"OK    {stopwatch.ElapsedMilliseconds,6} ms"
-        : $"no    {Trim(verdict, 60)}");
+        : "no");
+
+    if (verdict != "OK")
+    {
+        Console.WriteLine($"        {verdict}");
+    }
 }
 
 Console.WriteLine();
@@ -200,7 +209,14 @@ static async Task<List<string>> DiscoverAsync(
 
         // Speech, embedding and moderation models are on the same list and cannot do this job.
         // Filtered by name because asking each one costs a call and a minute.
-        string[] notRankers = ["whisper", "tts", "embed", "guard", "moderation", "vision-ocr"];
+        // Best-effort and known to be incomplete: the first real run put two speech models
+        // ("orpheus") through the full probe before their own API rejected them. Cheap to
+        // extend, and a model that slips through costs one call rather than a wrong answer.
+        string[] notRankers =
+        [
+            "whisper", "tts", "embed", "guard", "moderation", "vision-ocr", "orpheus",
+            "speech", "audio", "rerank",
+        ];
 
         var candidates = ids
             .Where(id => !notRankers.Any(x => id.Contains(x, StringComparison.OrdinalIgnoreCase)))
@@ -283,9 +299,6 @@ static RankingRequest SampleRequest() => new()
         },
     ],
 };
-
-static string Trim(string text, int max)
-    => text.Length <= max ? text : text[..max] + "…";
 
 internal sealed record Result(
     string Model, bool Ok, string Verdict, long Ms, AIRankingResult Answer);

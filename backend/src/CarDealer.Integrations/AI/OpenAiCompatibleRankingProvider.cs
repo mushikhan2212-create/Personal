@@ -76,7 +76,7 @@ public sealed class OpenAiCompatibleRankingProvider : IAIProvider
         var body = new
         {
             model = _options.Model,
-            max_tokens = 8_000,
+            max_tokens = _options.MaxTokens,
 
             // Deterministic-leaning. A ranking that reorders itself between identical calls is
             // not something a salesperson can refer back to, and creativity is not what is
