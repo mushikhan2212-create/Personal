@@ -80,20 +80,37 @@ exporter feed — gets built against a shape that was never tested against two. 
 configured and nothing calls it at runtime; it is compiled and tested code, not a live
 integration.
 
-**One loose end this closure exposes, which is not documentation.** `DatabaseSeeder` registers
-two *shared* sources typed `Carapis` — `sbtjapan` and `goonet_exchange` — in every environment.
-With Carapis dropped, those rows can now never receive data by any route the product still
-uses: a JSON import against them returns 400 by design
-([08-import-format.md](08-import-format.md)), and a sync would resolve a normalizer for an API
-nobody holds a key to. A fresh database therefore ships two dead sources that a user can see
-and select.
+**The loose end this closure appeared to expose, now resolved.** `DatabaseSeeder`'s bootstrap
+list registers two *shared* sources typed `Carapis` — `sbtjapan` and `goonet_exchange`. With
+Carapis dropped, those rows can receive data by no route the product still uses: a JSON import
+against them returns 400 by design ([08-import-format.md](08-import-format.md)), and a sync
+would resolve a normalizer for an API nobody holds a key to.
 
-That also does not square with the Phase 0.5 evidence, which reports 49 listings under the code
-`sbtjapan` loaded through the file importer — the exact combination the guard is supposed to
-reject. Either the seeded row was altered by hand in the working database or the guard has a
-gap. **Unverified: the live database was not reachable when this was written, and the question
-is which of those two it is.** Worth settling before the seeded types are changed, because the
-answer decides whether the fix is a one-line seed change or a hole in an import guard.
+Three things were checked before treating that as a defect, and two of them cancelled it:
+
+1. **It reaches a brand-new database only.** `SeedAsync` computes `catalogIsUnclaimed` and calls
+   `SeedVehicleSourcesAsync` only when the catalogue holds *no* sources at all. Any database
+   somebody is already using is left alone forever — the rule `SourceSeedingTests` exists to
+   pin down, after an operator reported the seeder re-imposing sample sources on every restart.
+   An operator who deletes these two has deleted them permanently.
+2. **The import guard has no gap.** It is a flat
+   `if (source.ProviderType != VehicleSourceProviderType.DealerJson)` returning 400, and the
+   dates settle the apparent contradiction with the Phase 0.5 evidence: the guard landed
+   2026-09-02 (`cd2cb75`) and the POC imported on 2026-09-07, so the 49 listings recorded under
+   `sbtjapan` can only have gone in against a row whose `ProviderType` had been changed by hand.
+   Nothing to fix in the guard.
+3. **No listing can be orphaned by deleting a source.** `VehicleListing → VehicleSource` is
+   `DeleteBehavior.Restrict`, so the database refuses to drop a source that still holds
+   listings rather than cascading them away.
+
+What remains is cosmetic and scoped to fresh installs: a virgin database still bootstraps two
+sources nobody can use. Taking them out of the list is a small change with a disproportionate
+tail — `SourceSeedingTests` uses `goonet_exchange` as the source it proves stays deleted,
+`VehicleSourceRegistrationTests` uses `sbtjapan` as the wrong-typed source that proves the
+import guard fires, and `SyncEndpointTests` syncs `sbtjapan` against a stub provider. Each
+needs a replacement fixture first, and the guard test specifically needs *some* non-`DealerJson`
+provider type to exist in order to still mean anything. Left undone deliberately, pending a
+decision on whether any non-file provider type survives at all.
 
 ## O3 — PII and data protection
 
