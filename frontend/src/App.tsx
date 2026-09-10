@@ -172,6 +172,7 @@ export function App() {
                 <CustomerDetailPage
                   publicId={view.id}
                   canManage={session.permissions.includes('customers.manage')}
+                  canRank={session.permissions.includes('ai.recommend')}
                   onBack={() => setView({ name: 'customers' })}
                   onOpenVehicle={(id) => setView({ name: 'vehicle', id })}
                 />

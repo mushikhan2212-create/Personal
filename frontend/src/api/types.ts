@@ -553,3 +553,35 @@ export interface MessageTemplateList {
   /** The legal placeholder set, served by the API so it cannot drift from the renderer. */
   placeholders: TemplatePlaceholder[];
 }
+
+// --- AI ranking (Phase 2, feature 1) ------------------------------------------------------
+
+/** Whether an ordering came from a model or from the deterministic filter. */
+export type RecommendationSource = 'Unknown' | 'Deterministic' | 'Ai';
+
+export interface RankedVehicle {
+  rank: number;
+  /** 0 to 1. Zero on a deterministic fallback row, where it means nothing. */
+  score: number;
+  /** Short phrases from the model. Empty on a fallback. */
+  reasons: string[];
+  vehicle: VehicleSummary;
+}
+
+export interface RequirementRanking {
+  requirementId: number;
+  matchedOn: string[];
+  source: RecommendationSource;
+  /**
+   * Why the model's answer was not used, when it was not.
+   *
+   * Always shown rather than swallowed: a salesperson looking at price order needs to know it
+   * is price order, or they will read a fallback as a recommendation.
+   */
+  notice: string | null;
+  /** True when a stored answer to the same question was served instead of asking again. */
+  reused: boolean;
+  /** False until a key is configured, which is what the button explains. */
+  providerConfigured: boolean;
+  items: RankedVehicle[];
+}

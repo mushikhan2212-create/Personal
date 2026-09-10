@@ -8,6 +8,7 @@
     acceptance criterion H6 true - no vendor SDK type reaches Application or Domain.
   -->
   <ItemGroup>
+    <PackageReference Include="Anthropic" Version="12.46.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.*" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.*" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.*" />

@@ -3,7 +3,7 @@ import type {
   CustomerDetail, CustomerImportResult, CustomerInput, CustomerListResponse, CustomerStatus,
   ImportResult, LoginResponse, MySource, RequirementInput, RequirementMatches, SyncResult,
   VehicleDetail, VehicleSearchResponse, VehicleSearchSort, VehicleSourceSummary,
-  DuplicateQueue, MergeRecord, MessageTemplateList,
+  DuplicateQueue, MergeRecord, MessageTemplateList, RequirementRanking,
 } from './types';
 
 /**
@@ -398,6 +398,26 @@ export const draftWhatsApp = (
     method: 'POST',
     body: JSON.stringify({ customerPublicId, vehiclePublicId, body, templatePublicId }),
   });
+
+// --- AI ranking -----------------------------------------------------------------------------
+
+/**
+ * Ranks the stock that fits a requirement, best first, with reasons.
+ *
+ * A POST because it can spend money with a third party and because the answer is stored. Pass
+ * `refresh` to ask again rather than serve the stored ranking — the only way to be billed twice
+ * for the same question.
+ *
+ * Never rejects for want of a model: with no key, a timeout or a rejected answer it returns the
+ * deterministic order with `source: 'Deterministic'` and a notice saying why.
+ */
+export const rankRequirement = (
+  customerPublicId: string, requirementId: number, refresh = false,
+): Promise<RequirementRanking> =>
+  request<RequirementRanking>(
+    `/customers/${customerPublicId}/requirements/${requirementId}/rank?refresh=${refresh}`,
+    { method: 'POST' },
+  );
 
 // --- Message templates --------------------------------------------------------------------
 

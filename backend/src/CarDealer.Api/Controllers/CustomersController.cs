@@ -5,6 +5,7 @@ using CarDealer.Application.Formatting;
 using CarDealer.Application.Search;
 using CarDealer.Domain.Entities;
 using CarDealer.Domain.Enums;
+using CarDealer.Infrastructure.AI;
 using CarDealer.Infrastructure.Import;
 using CarDealer.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
@@ -706,6 +707,80 @@ public sealed class CustomersController : ControllerBase
         }
 
         return [.. applied];
+    }
+
+    /// <summary>
+    /// Ranks the stock that fits this requirement, best first, with reasons.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Master prompt section 12's pipeline: the same deterministic filters
+    /// <see cref="Matches"/> runs produce the candidates, a model reorders them, and a person
+    /// reviews the result. The ranking is therefore always a permutation of what the matches
+    /// screen would have shown - it cannot introduce a car the filters excluded, and
+    /// <c>RankingGuards</c> checks that it did not rather than trusting it.
+    /// </para>
+    ///
+    /// <para>
+    /// A POST rather than a GET because it spends money with a third party, and because a
+    /// stored ranking is state a salesperson may quote from later. <c>refresh=true</c> asks
+    /// again instead of serving the stored answer, which is the only way to be billed twice for
+    /// the same question.
+    /// </para>
+    ///
+    /// <para>
+    /// Never fails for want of a model. No key, a timeout, a refusal, malformed JSON or a guard
+    /// firing all return the deterministic order with <c>source: "Deterministic"</c> and a
+    /// notice saying why - which is exactly what the matches screen shows today.
+    /// </para>
+    /// </remarks>
+    [HttpPost("{publicId:guid}/requirements/{requirementId:long}/rank")]
+    [HasPermission(Permissions.AiRecommend)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Rank(
+        Guid publicId,
+        long requirementId,
+        [FromServices] RecommendationService recommendations,
+        [FromQuery] bool refresh = false,
+        CancellationToken ct = default)
+    {
+        var requirement = await FindRequirementAsync(publicId, requirementId, ct)
+            .ConfigureAwait(false);
+
+        if (requirement is null)
+        {
+            return RequirementNotFound(requirementId);
+        }
+
+        var outcome = await recommendations
+            .RankAsync(requirement, ToQuery(requirement, 1, RecommendationService.MaxCandidates), refresh, ct)
+            .ConfigureAwait(false);
+
+        return Ok(new
+        {
+            requirementId,
+            matchedOn = Explain(requirement),
+
+            // Said plainly rather than inferred from an empty reasons array. A salesperson has
+            // to know whether they are looking at a ranking or at price order.
+            source = outcome.Source.ToString(),
+            outcome.Notice,
+            outcome.Reused,
+            providerConfigured = recommendations.ProviderConfigured,
+
+            Items = outcome.Entries.Select(e => new
+            {
+                e.Rank,
+                e.Score,
+                e.Reasons,
+
+                // The same projection the search and matches endpoints use, so the frontend
+                // renders these with the card it already has.
+                Vehicle = VehicleSummary.From(e.Hit),
+            }).ToList(),
+        });
     }
 
     // -------------------------------------------------------------------------------------

@@ -25,6 +25,14 @@ interface Props {
    * and the button would ask "to whom?" on every one of twenty-four cards.
    */
   onMessage?: (id: string) => void;
+  /**
+   * Rank and reasons per vehicle id, when a ranking is being shown.
+   *
+   * Keyed rather than folded into the item type so the grid stays one component. A ranking is
+   * a permutation of the same cars with a note attached; giving it its own card would mean two
+   * places to fix the next time a card changes.
+   */
+  annotations?: Record<string, { rank: number; reasons: string[] }>;
 }
 
 /**
@@ -43,7 +51,7 @@ interface Props {
  * Sorting moved to the control above the grid. A card has no column header to click, which is
  * the one thing genuinely lost here, and the screen already had that dropdown.
  */
-export function VehicleCards({ items, loading, onOpen, onMessage }: Props) {
+export function VehicleCards({ items, loading, onOpen, onMessage, annotations }: Props) {
   if (loading && items.length === 0) {
     return (
       <Row gutter={[16, 16]}>
@@ -67,17 +75,23 @@ export function VehicleCards({ items, loading, onOpen, onMessage }: Props) {
     <Row gutter={[16, 16]}>
       {items.map((v) => (
         <Col key={v.id} {...SPAN}>
-          <VehicleCard vehicle={v} onOpen={onOpen} onMessage={onMessage} />
+          <VehicleCard
+            vehicle={v}
+            onOpen={onOpen}
+            onMessage={onMessage}
+            annotation={annotations?.[v.id]}
+          />
         </Col>
       ))}
     </Row>
   );
 }
 
-function VehicleCard({ vehicle: v, onOpen, onMessage }: {
+function VehicleCard({ vehicle: v, onOpen, onMessage, annotation }: {
   vehicle: VehicleSummary;
   onOpen: (id: string) => void;
   onMessage?: (id: string) => void;
+  annotation?: { rank: number; reasons: string[] };
 }) {
   const title = [v.make, v.model].filter(Boolean).join(' ') || 'Unidentified vehicle';
   const { label: age, isStale } = describeAge(v.lastSeenAtUtc);
@@ -97,6 +111,22 @@ function VehicleCard({ vehicle: v, onOpen, onMessage }: {
       cover={<Cover src={v.imageUrl} alt={title} offerCount={v.offerCount} stale={isStale} />}
     >
       <Flex vertical gap={10}>
+        {annotation && (
+          <Flex vertical gap={4}>
+            <Tag color="purple" style={{ marginInlineEnd: 0, alignSelf: 'flex-start' }}>
+              #{annotation.rank}
+            </Tag>
+
+            {/* The model's words, kept visibly separate from the catalogue's facts above and
+                below them. Everything else on this card is measured; this is an opinion. */}
+            {annotation.reasons.map((reason) => (
+              <Typography.Text key={reason} type="secondary" style={{ fontSize: 12 }}>
+                · {reason}
+              </Typography.Text>
+            ))}
+          </Flex>
+        )}
+
         <Flex vertical gap={2}>
           <Typography.Text strong style={{ fontSize: 15 }} ellipsis={{ tooltip: title }}>
             {title}

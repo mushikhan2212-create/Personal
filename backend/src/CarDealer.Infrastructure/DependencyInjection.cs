@@ -5,6 +5,9 @@ using CarDealer.Application.VehicleSources;
 using CarDealer.Infrastructure.Search;
 using CarDealer.Infrastructure.Sources;
 using CarDealer.Infrastructure.Sync;
+using CarDealer.Application.AI;
+using CarDealer.Infrastructure.AI;
+using CarDealer.Integrations.AI;
 using CarDealer.Integrations.Carapis;
 using CarDealer.Integrations.FileImport;
 using CarDealer.Application.Auth;
@@ -96,6 +99,8 @@ public static class DependencyInjection
         // comes through; nothing above it names a provider.
         services.AddSingleton<IMessagingProvider, WhatsAppLinkProvider>();
 
+        AddAI(services, configuration);
+
         AddVehicleSources(services, configuration);
 
         return services;
@@ -115,6 +120,59 @@ public static class DependencyInjection
     /// Registers vehicle source providers and the sync service.
     /// </summary>
     /// <remarks>
+    /// <summary>
+    /// Registers the AI provider named in configuration, or the unconfigured one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Master prompt section 11 asks for a provider-agnostic AI layer, and this method is where
+    /// that promise is either kept or quietly broken. Everything above <c>IAIProvider</c> - the
+    /// prompt, the guards, the persistence, the screen - is written without knowing which of
+    /// these is registered.
+    /// </para>
+    ///
+    /// <para>
+    /// No key means <see cref="UnconfiguredAIProvider"/> rather than a missing registration.
+    /// Shipping before the owner has chosen between providers is the expected state of this
+    /// system, not a misconfiguration, so it resolves to something that says so politely
+    /// instead of throwing at the first request.
+    /// </para>
+    ///
+    /// <para>
+    /// The key is read from configuration, which means environment variables, user secrets or
+    /// backend/.env - never appsettings*.json, where it would become a permanent part of git
+    /// history the moment somebody commits.
+    /// </para>
+    /// </remarks>
+    private static void AddAI(IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddOptions<AIOptions>()
+            .Bind(configuration.GetSection(AIOptions.SectionName));
+
+        services.AddHttpClient("ai-ranking");
+        services.AddScoped<RecommendationService>();
+
+        var provider = configuration[$"{AIOptions.SectionName}:Provider"];
+        var apiKey = configuration[$"{AIOptions.SectionName}:ApiKey"];
+
+        if (string.IsNullOrWhiteSpace(provider) || string.IsNullOrWhiteSpace(apiKey))
+        {
+            services.AddScoped<IAIProvider, UnconfiguredAIProvider>();
+            return;
+        }
+
+        if (provider.Equals("anthropic", StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddScoped<IAIProvider, AnthropicRankingProvider>();
+            return;
+        }
+
+        // Everything else is assumed to speak the OpenAI chat-completions shape, which is what
+        // Groq and most self-hosted servers do. An unknown name with a base URL therefore works
+        // rather than needing a code change - the format is the dependency, not the vendor.
+        services.AddScoped<IAIProvider, OpenAiCompatibleRankingProvider>();
+    }
+
     /// Master prompt section 8 requires that Carapis can be disabled without breaking the rest
     /// of the platform, and this is where that is true or not. With no API key configured the
     /// provider is simply not registered: the catalog, the search and every other endpoint

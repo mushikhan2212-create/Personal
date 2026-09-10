@@ -289,3 +289,45 @@ public enum RequirementStatus : byte
     /// <summary>Abandoned. Kept for the demand reporting Phase 3 will want.</summary>
     Cancelled = 4,
 }
+
+/// <summary>Where a recommendation's ordering came from.</summary>
+/// <remarks>
+/// Stored because a fallback ordering and a paid-for ranking are otherwise indistinguishable
+/// once they are rows in the same table - and the ratio between them is what tells you whether
+/// a provider is earning its keep.
+/// </remarks>
+public enum RecommendationSource : byte
+{
+    Unknown = 0,
+
+    /// <summary>The deterministic filter order, used when no model answer was usable.</summary>
+    Deterministic = 1,
+
+    /// <summary>A model's ranking, which passed every guard.</summary>
+    Ai = 2,
+}
+
+/// <summary>How a call to an AI provider ended.</summary>
+public enum AIRequestStatus : byte
+{
+    Unknown = 0,
+
+    /// <summary>Sent, no answer yet.</summary>
+    Pending = 1,
+
+    /// <summary>Answered, and the answer passed the guards.</summary>
+    Succeeded = 2,
+
+    /// <summary>No answer: a network failure, a timeout, or a refusal.</summary>
+    Failed = 3,
+
+    /// <summary>
+    /// Answered, but the answer failed a guard and was thrown away.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="Failed"/> on purpose. A provider that answers promptly and
+    /// wrongly is a different problem from one that does not answer, it is billed for either
+    /// way, and only this status tells the two apart.
+    /// </remarks>
+    Rejected = 4,
+}

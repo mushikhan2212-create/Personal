@@ -30,6 +30,7 @@ Schema consequences are in [`04-schema-delta.md`](04-schema-delta.md).
 | [D15](#d15--whatsapp-ships-as-a-click-to-chat-link-until-the-business-api-is-approved) | WhatsApp ships as a click-to-chat link until the Business API is approved | Accepted |
 | [D16](#d16--near-duplicates-are-suggested-never-merged) | Near-duplicates are suggested, never merged | Accepted |
 | [D17](#d17--top-level-route-identifiers-are-guids-nested-ones-may-be-integers) | Top-level route identifiers are GUIDs; nested ones may be integers | Accepted |
+| [D18](#d18--the-ai-ranks-it-never-selects-and-guards-decide-whether-to-believe-it) | The AI ranks, it never selects, and guards decide whether to believe it | Accepted |
 
 ---
 
@@ -931,3 +932,70 @@ both shapes still exist so the first two cannot pass vacuously. Reverting a sing
 Internal ids are still fine in response bodies where they are not identifiers — a React key, or
 the `candidateId` recorded inside a merge's audit blob. This decision is about what appears in a
 URL.
+
+
+---
+
+## D18 — The AI ranks, it never selects, and guards decide whether to believe it
+
+**Status:** Accepted · **Phase:** 2, feature 1
+
+### Problem
+
+Master prompt §11 asks for AI vehicle recommendation and says the platform must "never invent
+availability, price, specifications or customer facts". A prompt can request that. Nothing about
+a prompt enforces it, and the failure is silent: a ranking that quotes a mileage the car does not
+have reads perfectly and is false, and the person most likely to repeat it to a customer is the
+one least able to check it.
+
+Two further questions had no answer. Which provider — the owner is weighing Anthropic against
+Groq on cost, and neither has been tried. And what customer data may leave, which is
+[O4](05-open-items.md#o4--pii-redaction-before-ai-calls), still open.
+
+### Decision
+
+**Three rules, each enforced by construction rather than by instruction.**
+
+**1. The model ranks a set it cannot change.** The deterministic filters produce the candidates —
+the same ones the matches screen already shows — and the model returns a permutation with
+reasons. It cannot introduce a car the filters excluded or remove one they admitted.
+
+**2. Four guards decide whether the answer is used**, in `RankingGuards`:
+no invented ids, no dropped candidates, no duplicates, ranks contiguous from 1, scores in range,
+and every number in a reason must appear verbatim in that car's own fields or in the requirement.
+A failure falls back to the deterministic order and says so on screen.
+
+**3. Only `RequirementBrief` leaves.** It has no field for a name, a phone number, an email or
+free text — including `RawRequirementText`, which is where a phone number ends up in this trade.
+That is a property of the type, not a convention: widening it means editing the type, which is
+the point.
+
+### Why
+
+The guards are what make provider choice **measurable instead of a bet**. A weaker model does not
+produce wrong recommendations here — it produces more rejections, and rejections are counted in
+`AIRequests.Status`. Two providers can be compared on a number rather than an opinion, which is
+exactly the question the owner has open.
+
+Rule 3 has a scheduling consequence worth stating: this feature does **not** wait on O4. The hard
+half of that decision is free text, and free text is already blocked behind the WhatsApp Business
+API. The structured half needs no ruling — a filter is not personal data.
+
+### Cost accepted
+
+**Derived arithmetic is rejected along with hallucination.** "200 under the ceiling" is true and
+useful, and the guard refuses it, because there is no way to tell a correct subtraction from an
+invented number by looking at the output. The prompt tells the model to quote figures rather than
+calculate them. If that turns out to be a common phrasing in practice, the fix is the prompt, not
+a weaker guard.
+
+**A stored ranking can go stale.** Rankings persist so that a salesperson who quoted from one
+sees the same order tomorrow, and re-ranking is an explicit act. The fingerprint covers the
+requirement, the candidate ids, the model and the prompt version, so the common causes of
+staleness invalidate it — but a car whose price changed underneath an unchanged candidate set
+will not.
+
+**Two adapters, neither exercised.** `AnthropicRankingProvider` uses the official SDK;
+`OpenAiCompatibleRankingProvider` covers Groq and anything else speaking that shape. Both compile
+and neither has run against a live endpoint, because no key existed when they were written. The
+first live call is the test.

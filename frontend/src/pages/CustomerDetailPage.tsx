@@ -5,10 +5,11 @@ import {
 } from 'antd';
 import {
   addCustomerNote, addRequirement, deleteCustomer, deleteCustomerNote, deleteRequirement,
-  editCustomerNote, getCustomer, getMatches, updateCustomer,
+  editCustomerNote, getCustomer, getMatches, rankRequirement, updateCustomer,
 } from '../api/client';
 import type {
   CustomerDetail, CustomerInput, CustomerNote, Requirement, RequirementInput, RequirementMatches,
+  RequirementRanking,
 } from '../api/types';
 import { VehicleCards } from '../components/VehicleCards';
 import { WhatsAppButton } from '../components/WhatsAppButton';
@@ -20,6 +21,8 @@ import { formatUtc, specLabel } from '../format';
 interface Props {
   publicId: string;
   canManage: boolean;
+  /** Whether this user may spend money ranking matches with AI. */
+  canRank: boolean;
   onBack: () => void;
   onOpenVehicle: (id: string) => void;
 }
@@ -37,7 +40,9 @@ const CUSTOMER_STATUS_COLOUR: Record<string, string | undefined> = {
   Closed: undefined,
 };
 
-export function CustomerDetailPage({ publicId, canManage, onBack, onOpenVehicle }: Props) {
+export function CustomerDetailPage({
+  publicId, canManage, canRank, onBack, onOpenVehicle,
+}: Props) {
   const { message, modal } = AntApp.useApp();
 
   const [customer, setCustomer] = useState<CustomerDetail | null>(null);
@@ -310,6 +315,7 @@ export function CustomerDetailPage({ publicId, canManage, onBack, onOpenVehicle 
                 ),
                 children: (
                   <RequirementMatchesPanel
+                    canRank={canRank}
                     publicId={publicId}
                     requirement={r}
                     canManage={canManage}
@@ -465,11 +471,13 @@ function Contact({ label, value, href }: {
  * are collapsed.
  */
 function RequirementMatchesPanel({
-  publicId, requirement, canManage, onOpenVehicle, onDelete, onMessageVehicle,
+  publicId, requirement, canManage, canRank, onOpenVehicle, onDelete, onMessageVehicle,
 }: {
   publicId: string;
   requirement: Requirement;
   canManage: boolean;
+  /** Whether this user may spend money ranking. The button is hidden rather than disabled. */
+  canRank: boolean;
   onOpenVehicle: (id: string) => void;
   onDelete: () => void;
   onMessageVehicle: (vehiclePublicId: string) => void;
@@ -478,6 +486,33 @@ function RequirementMatchesPanel({
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [ranking, setRanking] = useState<RequirementRanking | null>(null);
+  const [rankingBusy, setRankingBusy] = useState(false);
+
+  // Only when a model actually produced the order. A deterministic fallback carries rank 1..n
+  // and no reasons, and badging it would dress price order up as a recommendation.
+  const ranked = ranking?.source === 'Ai'
+    ? ranking.items.map((i) => i.vehicle)
+    : null;
+
+  const annotations = ranking?.source === 'Ai'
+    ? Object.fromEntries(ranking.items.map((i) => [
+        i.vehicle.id,
+        { rank: i.rank, reasons: i.reasons },
+      ]))
+    : undefined;
+
+  const rank = async (refresh: boolean): Promise<void> => {
+    setRankingBusy(true);
+
+    try {
+      setRanking(await rankRequirement(publicId, requirement.id, refresh));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not rank these.');
+    } finally {
+      setRankingBusy(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -510,10 +545,47 @@ function RequirementMatchesPanel({
           )}
         </Space>
 
-        {canManage && (
-          <Button size="small" danger icon={<TrashGlyph />} onClick={onDelete}>Delete</Button>
-        )}
+        <Space size={8}>
+          {canRank && (
+            <Button
+              size="small"
+              loading={rankingBusy}
+              onClick={() => void rank(ranking !== null)}
+            >
+              {ranking === null ? 'Rank with AI' : 'Rank again'}
+            </Button>
+          )}
+
+          {canManage && (
+            <Button size="small" danger icon={<TrashGlyph />} onClick={onDelete}>Delete</Button>
+          )}
+        </Space>
       </Flex>
+
+      {/*
+        Said plainly rather than left to be inferred from an empty reasons list. A fallback
+        ordering looks exactly like a ranking on screen, and a salesperson who mistakes price
+        order for a recommendation has been misled by the interface rather than by the model.
+      */}
+      {ranking?.notice && (
+        <Alert
+          type={ranking.providerConfigured ? 'warning' : 'info'}
+          showIcon
+          message={
+            ranking.providerConfigured
+              ? 'Showing price order, not a ranking'
+              : 'No AI provider is set up yet'
+          }
+          description={ranking.notice}
+        />
+      )}
+
+      {ranking?.source === 'Ai' && (
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          Ranked by AI{ranking.reused ? ' · saved from an earlier run' : ''} · you decide what to
+          send, and every figure below comes from the catalogue rather than from the model.
+        </Typography.Text>
+      )}
 
       {requirement.rawRequirementText && (
         <Typography.Text type="secondary" style={{ fontSize: 12, fontStyle: 'italic' }}>
@@ -541,11 +613,14 @@ function RequirementMatchesPanel({
         : (
           <>
             <VehicleCards
-              items={matches?.items ?? []}
+              // The ranking replaces the list when there is one, rather than sitting beside it:
+              // two orderings of the same cars on one screen is a question, not an answer.
+              items={ranked ?? matches?.items ?? []}
               loading={loading}
               onOpen={onOpenVehicle}
               // The customer is known here, so sending one of these to them is one click.
               onMessage={canManage ? onMessageVehicle : undefined}
+              annotations={annotations}
             />
 
             {/* Without this the panel said "46 cars fit" and showed the cheapest handful, with

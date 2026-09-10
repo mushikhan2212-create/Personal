@@ -107,6 +107,15 @@ public static class Permissions
     /// </remarks>
     public const string MessagingTemplatesManage = "messaging.templates";
 
+    /// <summary>Ask an AI provider to rank the stock that fits a requirement.</summary>
+    /// <remarks>
+    /// Its own permission rather than folded into <see cref="CustomersRead"/> because every
+    /// press of the button spends money with a third party. A read that costs nothing and a
+    /// read that bills the account are not the same act, and a read-only role must not be able
+    /// to run up a bill by refreshing.
+    /// </remarks>
+    public const string AiRecommend = "ai.recommend";
+
     public static readonly IReadOnlyDictionary<string, string> All = new Dictionary<string, string>
     {
         [TenantsRead] = "View tenant details and settings",
@@ -123,6 +132,7 @@ public static class Permissions
         [CustomersManage] = "Create, edit and delete customers and requirements",
         [VehiclesPrice] = "Set your own retail price on a car",
         [MessagingTemplatesManage] = "Create, edit and delete message templates",
+        [AiRecommend] = "Rank matching stock with AI",
     };
 
     /// <summary>
@@ -143,7 +153,7 @@ public static class Permissions
             [
                 TenantsRead, UsersRead, UsersManage, RolesRead, RolesManage, AuditRead,
                 VehiclesRead, VehiclesSync, VehiclesMerge, CustomersRead, CustomersManage,
-                VehiclesPrice, MessagingTemplatesManage,
+                VehiclesPrice, MessagingTemplatesManage, AiRecommend,
             ],
             // Sales Manager reads the catalog like everyone else but does not administer
             // sources: importing publishes cars into the shared catalog, which is Admin's call.
@@ -151,7 +161,7 @@ public static class Permissions
             [SystemRoles.SalesManager] =
             [
                 TenantsRead, UsersRead, RolesRead, VehiclesRead, CustomersRead, CustomersManage,
-                VehiclesPrice, MessagingTemplatesManage,
+                VehiclesPrice, MessagingTemplatesManage, AiRecommend,
             ],
             // Selling is the job. A salesperson who cannot record who they are selling to
             // has no product here, and one who cannot price a car cannot quote for it. The
@@ -159,7 +169,7 @@ public static class Permissions
             [SystemRoles.Salesperson] =
             [
                 TenantsRead, UsersRead, VehiclesRead, CustomersRead, CustomersManage,
-                VehiclesPrice,
+                VehiclesPrice, AiRecommend,
             ],
 
             // ReadOnly can search. Withholding it would make the role useless in a product

@@ -70,6 +70,10 @@ public class CarDealerDbContext : DbContext
 
     public DbSet<MessageTemplate> MessageTemplates => Set<MessageTemplate>();
 
+    public DbSet<AIRequest> AIRequests => Set<AIRequest>();
+
+    public DbSet<VehicleRecommendation> VehicleRecommendations => Set<VehicleRecommendation>();
+
     public DbSet<RequirementAlert> RequirementAlerts => Set<RequirementAlert>();
 
     public DbSet<Make> Makes => Set<Make>();
@@ -186,6 +190,14 @@ public class CarDealerDbContext : DbContext
         // A message template carries the dealer's own wording, their sign-off, and often the
         // price they sell at. None of that is catalogue data.
         modelBuilder.Entity<MessageTemplate>()
+            .HasQueryFilter(e => e.TenantId == _tenantContext.TenantIdOrZero);
+
+        // A ranking is derived from a customer's requirement, so it is as private as the
+        // requirement is - and the spend record beside it is nobody else's business either.
+        modelBuilder.Entity<VehicleRecommendation>()
+            .HasQueryFilter(e => e.TenantId == _tenantContext.TenantIdOrZero);
+
+        modelBuilder.Entity<AIRequest>()
             .HasQueryFilter(e => e.TenantId == _tenantContext.TenantIdOrZero);
 
         // UserVehicleSourcePreference is deliberately absent from this list. It is keyed by
