@@ -18,7 +18,7 @@ using Microsoft.Extensions.Options;
 //
 //   ANTHROPIC-STYLE:  dotnet run -- --provider anthropic --model <id>
 //   GROQ / OPENAI:    dotnet run -- [--model <id>] [--model <id>] ...
-//   RATE-LIMITED:     dotnet run -- --max-tokens 1000
+//   RATE-LIMITED:     dotnet run -- --max-tokens 1000 --delay 60
 //
 // With no --model, it asks the provider what it serves and probes everything plausible.
 
@@ -31,6 +31,14 @@ var explicitModels = ArgValues("--model");
 // ASKS for rather than what it uses, so probing at 8,000 made two models 429 that would have
 // answered comfortably - excluding them for a setting rather than for a shortcoming.
 var maxTokens = int.TryParse(ArgValue("--max-tokens"), out var parsed) ? parsed : 2_000;
+
+// Seconds to wait between models.
+//
+// Zero by default, and set on a rate-limited account. The output-token ceiling is per MINUTE,
+// so probing back to back spends the whole allowance on the first two models and 429s the rest
+// - which reads exactly like a verdict on those models and is not one. That happened: three
+// runs of this tool rejected both qwen models for the sin of being third in the list.
+var delay = int.TryParse(ArgValue("--delay"), out var seconds) ? Math.Max(0, seconds) : 0;
 
 var apiKey = Environment.GetEnvironmentVariable("AI__ApiKey")
     ?? Environment.GetEnvironmentVariable("GROQ_API_KEY")
@@ -68,10 +76,24 @@ Console.WriteLine(
     + $"max_tokens {maxTokens}.");
 Console.WriteLine();
 
+if (delay > 0)
+{
+    Console.WriteLine($"Waiting {delay}s between models, to stay under a per-minute limit.");
+    Console.WriteLine();
+}
+
 var results = new List<Result>();
+var first = true;
 
 foreach (var model in models)
 {
+    if (!first && delay > 0)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(delay));
+    }
+
+    first = false;
+
     Console.Write($"  {model,-52} ");
 
     var options = Options.Create(new AIOptions
@@ -121,6 +143,17 @@ foreach (var model in models)
     if (verdict != "OK")
     {
         Console.WriteLine($"        {verdict}");
+
+        // Called out, because it is the one failure here that says nothing about the model. A
+        // per-minute output ceiling shared across a sequential probe punishes whichever models
+        // happen to be later in the list, and reading that as "this model cannot rank" is how
+        // a usable one gets struck off for its position in an alphabetical sort.
+        if (RateLimited(verdict))
+        {
+            Console.WriteLine(
+                "        ^ a rate limit, not a verdict. Re-probe this one alone, or with "
+                + "--delay 60.");
+        }
     }
 }
 
@@ -196,6 +229,12 @@ Console.WriteLine();
 return 0;
 
 // ---------------------------------------------------------------------------------------
+
+/// <summary>Whether a failure was the account's per-minute ceiling rather than the model.</summary>
+static bool RateLimited(string verdict)
+    => verdict.Contains("429", StringComparison.Ordinal)
+        || verdict.Contains("rate limit", StringComparison.OrdinalIgnoreCase)
+        || verdict.Contains("OTPM", StringComparison.Ordinal);
 
 static bool Flagged(RankingRequest request, Guid id)
     => request.Candidates.First(c => c.Id == id).CloseToTheirLimits == true;

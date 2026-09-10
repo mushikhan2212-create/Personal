@@ -76,6 +76,23 @@ To check specific models instead:
 AI__ApiKey=<key> dotnet run -- --model <id> --model <id>
 ```
 
+### Probe two or three at a time, not all of them
+
+The output-token ceiling is **per minute and shared across the whole run**. A sequential probe
+spends the allowance on the first models and 429s the rest — which reads exactly like a verdict
+on those models and is not one. It has already happened here: three consecutive runs struck off
+both qwen models for being third and fourth in an alphabetical list, and one of them turned out
+to be the cheapest usable model on the account.
+
+So either probe a couple at a time, or space the run out:
+
+```bash
+AI__ApiKey=<key> dotnet run -- --model <id> --model <id> --delay 60
+```
+
+A 429 is now labelled in the output as a rate limit rather than a failure. Re-probe anything that
+hits one, alone.
+
 ### What decides it
 
 **Structured output support is the whole game.** The adapter sends
