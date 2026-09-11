@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -109,9 +110,13 @@ public sealed class OpenAiCompatibleRankingProvider : IAIProvider
 
             // The body is included because these endpoints put the useful part there - an
             // unknown model id or a decommissioned one both arrive as a 400 whose status alone
-            // says nothing.
+            // says nothing. The rate limit is the exception: see ProviderErrors.
             return AIRankingResult.Failed(
-                $"{Name} returned {(int)response.StatusCode}: {Shorten(detail)}", Name, _options.Model);
+                response.StatusCode == HttpStatusCode.TooManyRequests
+                    ? ProviderErrors.RateLimit(Name, detail)
+                    : $"{Name} returned {(int)response.StatusCode}: {Shorten(detail)}",
+                Name,
+                _options.Model);
         }
 
         var completion = await response.Content

@@ -30,7 +30,7 @@ AI__Provider=groq
 AI__Model=<the model id, exactly as the provider spells it>
 AI__ApiKey=<your key>
 AI__MaxCandidates=8
-AI__MaxTokens=1200
+AI__MaxTokens=900
 ```
 
 The double underscore is how .NET nests configuration: `AI__Provider` sets `AI:Provider`.
@@ -76,7 +76,7 @@ Those commands write one file, which you can equally write by hand. The project'
     "Model": "<the model id>",
     "ApiKey": "<your key>",
     "MaxCandidates": 8,
-    "MaxTokens": 1200
+    "MaxTokens": 900
   }
 }
 ```
@@ -215,35 +215,57 @@ The measurement that decides whether this works at all, and the one nobody think
 A Groq `on_demand` account is capped at **1,000 output tokens per minute**, and a request that
 would exceed it is rejected outright with a 429 rather than truncated.
 
-**The cap is applied to an estimate Groq computes, which is neither `max_tokens` nor what the
-answer actually uses.** An earlier version of this file said it was enforced against what the
-request asks for; the evidence does not support that. At `max_tokens` 8,000 the same five-car
-request was refused with *"Limit 1000, Requested 1387"* for one model and *"Requested 2390"* for
-another — nowhere near 8,000, and different per model. Lowering `max_tokens` to 2,000 brought
-both under. So `max_tokens` clearly feeds the estimate without equalling it, and **the 429 body
-tells you the number it computed**, which is the only reliable way to size this.
+The number it checks is **`Requested`, which is the smaller of your `max_tokens` and an estimate
+Groq computes from the request**. Three measurements pin that down:
 
-The budget is also **per minute across every request in it**, not per request. Two rankings in
-quick succession share it.
+| `max_tokens` sent | `Requested` in the refusal | What it means |
+| --- | --- | --- |
+| 8,000 | 1,387 | the estimate was lower, so the estimate was used |
+| 8,000 | 2,390 | same, a different model estimating higher |
+| 1,200 | 1,200 | `max_tokens` was lower, so **it** was used |
 
-What that means in practice:
+Two rules follow, and the second is the one that bites:
 
-1. Take the model's measured output-per-car from the table above.
-2. Set `AI__MaxCandidates` so the total sits well under 1,000, with room to spare.
-3. Set `AI__MaxTokens` a little above that total — high enough that a long answer is not
-   truncated mid-JSON, low enough that Groq's estimate fits.
-4. Watch `AIRequests` for a week. A 429 shows up there as `Failed`; if none appear, raise it.
+**`AI__MaxTokens` must be below the limit, always.** A ceiling above the whole per-minute
+allowance can never succeed — not on a big requirement, not on a small one. `AI__MaxTokens=1200`
+against a 1,000 limit is rejected the moment the estimate reaches 1,200, however short the answer
+would actually have been.
 
-For `qwen/qwen3.8-27b` at roughly 83 output tokens per car, that is:
+**Which is why the same setting can work on one requirement and fail on the next.** The estimate
+grows with the number of cars sent. A requirement matching four cars estimates under the limit and
+goes through; one matching eight estimates over it and is refused. Nothing about the first
+requirement proves the configuration is sound.
+
+So, in order:
+
+1. Set `AI__MaxTokens` **below your OTPM limit**. That alone removes this refusal outright.
+2. Set `AI__MaxCandidates` so the answer actually *fits* inside that ceiling — take the model's
+   measured output-per-car from the table above. Too many cars no longer 429s; it truncates the
+   JSON mid-answer instead, which wastes the call just as thoroughly.
+3. Watch `AIRequests` for a week. Both failures land there as `Failed`, and `FailureReason` says
+   which.
+
+For `qwen/qwen3.8-27b` at roughly 83 output tokens per car, against a 1,000 OTPM limit:
 
 ```
+AI__MaxTokens=900
 AI__MaxCandidates=8
-AI__MaxTokens=1200
 ```
 
-For `openai/gpt-oss-20b` at roughly 190, the same budget buys four or five cars. **The model you
-choose decides how long your shortlist can be** — which is the argument for the cheap one that
-happens to rank identically.
+900 is under the limit, so the refusal cannot fire; eight cars need about 660, so the answer fits
+inside 900 with room to spare.
+
+For `openai/gpt-oss-20b` at roughly 190, the same 900 buys four cars. **The model you choose
+decides how long your shortlist can be** — which is the argument for the cheap one that happens to
+rank identically.
+
+The budget is also **per minute across every request in it**, not per request. Two rankings in the
+same minute share it, so a second one can be refused on its own even when its numbers are fine.
+
+**Raising the account's tier removes all of this.** The arithmetic above exists only because the
+`on_demand` ceiling is 1,000; a larger allowance means a larger `AI__MaxTokens` and a longer
+shortlist. It is worth doing when the shortlist length starts to matter — but it is not required
+to make the feature work, and configuring it correctly costs nothing.
 
 Whatever you set, the code clamps candidates above 40, because a typo in a config file should not
 send the whole catalogue to a model.
