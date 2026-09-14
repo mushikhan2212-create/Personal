@@ -96,12 +96,26 @@ permitted*. Only WhatsApp is built, and only as a click-to-chat link — see
 | E1 | A message about a car is drafted and shown before anything leaves the platform | Messaging drawer |
 | E2 | Nothing sends without a person pressing send | D15; there is no send path |
 | E3 | A phone number that cannot be resolved **refuses** rather than guessing a country | `PhoneNumberTests` |
-| E4 | The message carries no source link and no price | `MessageComposerTests` |
+| ~~E4~~ | ~~The message carries no source link and no price~~ | **Superseded** — see below |
+| E4a | `{Price}` resolves to the dealer's own retail price and never a source listing's | `TemplateFields`; `TemplateRendererTests` |
+| E4b | A template offering the listing link warns what it does before it is saved | Template editor |
 | E5 | No enum name reaches a message a customer reads | `A_multi_word_transmission_reads_as_the_trade_writes_it` |
 | E6 | The screen says what will actually happen, not "sent" | `canSendDirectly` drives the wording |
 
-E4 is a commercial rule, not a style choice: the source URL names the exporter, and a customer
-who follows it buys direct.
+**E4 was overridden by the product owner and is recorded rather than quietly dropped.** It was
+written as an absolute: no price, no source link, because the source URL names the exporter and a
+customer who follows it buys direct. When message templates were built the owner was asked
+directly and chose to allow both, *"my call per template"* — which is a legitimate call for
+somebody who knows their own customers and is the only person whose margin is at risk.
+
+The commercial rule survives in the narrower form the two rows above state, and that half is not
+discretionary. `{Price}` resolves from `TenantVehicle.TenantPrice` only: the catalogue row carries
+what the **exporter** is asking, and rendering that would quote the dealer's own buying price —
+their entire margin — to the person they are quoting to. An unset retail price drops the line
+rather than falling back to anything.
+
+This is the only criterion in A–F that a later decision has invalidated, which is worth saying
+plainly: the rest of this document still describes the system as built.
 
 ## F. Alerting
 
@@ -127,14 +141,18 @@ model, so the first is not deferrable; two of the four have since closed.
 
 | # | Item | Why it blocks |
 | --- | --- | --- |
-| G1 | [O4](05-open-items.md#o4--pii-redaction-before-ai-calls) — PII redaction before AI calls | Every Phase 2 feature sends customer data somewhere. Nobody has decided what may leave. |
+| ~~G1~~ | ~~[O4](05-open-items.md#o4--pii-redaction-before-ai-calls) — PII redaction before AI calls~~ | **Closed** as [D20](02-decisions.md#d20--a-customers-message-is-redacted-before-it-leaves-and-never-stored). The owner chose: send it redacted, never store it. Both halves are enforced by construction — `Redaction` strips identifiers, `ExtractionRequest` cannot be built from a raw string, and the audit row holds measurements rather than content. Feature 1 had already sidestepped the question by sending a `RequirementBrief` with nowhere to put a name; feature 2 could not, so it was answered. |
 | ~~G2~~ | ~~[O2](05-open-items.md#o2--carapis-licensing-gate) — Carapis licensing~~ | **Closed** — the owner decided against using Carapis, which answers the question by removing it. The fallback the open item named was never hypothetical: the whole Phase 0.5 evidence base came through the file import route, so nothing is lost. Two now-unusable sources remain in the seeder's bootstrap list, which reaches new databases only; see O2. |
 | ~~G3~~ | ~~[O8](05-open-items.md#o8--publicid-coverage) — `PublicId` coverage~~ | **Closed** as [D17](02-decisions.md#d17--top-level-route-identifiers-are-guids-nested-ones-may-be-integers). Phase 1 first made this worse — two more integer-keyed routes — then settled it: top-level routes take a GUID, nested ones may keep an integer because the parent's GUID already gates them. Enforced by `RouteIdentifierTests`. |
 | G4 | WhatsApp Business API approval | Four of Phase 2's seven features need *inbound* messages, which D15's click-to-chat path structurally cannot see. Weeks of lead time; nothing has been applied for. |
 
 G3 was a defect this phase introduced and has since been fixed; it is left in the table struck
 through rather than deleted, because a gate that was real and then closed is part of the record.
-G1, G2 and G4 remain open.
+G1 was closed after this document was drafted and before it was signed.
+
+**G4 alone remains open**, and it is the one nothing in this repository can close. Four of Phase
+2's seven features need *inbound* messages, which D15's click-to-chat path structurally cannot
+see. No application has been made, and the lead time runs in weeks from whenever one is.
 
 ## X. What is not built
 
@@ -160,14 +178,62 @@ verified it. **§G stays open regardless** — signing this does not clear the P
 
 | Field | Value |
 | --- | --- |
-| Verified by | _unset_ |
-| Accepted by | _unset_ |
-| Date | _unset_ |
-| Result | _pending_ |
+| Verified by | Claude Opus 5, by the method recorded below |
+| Accepted by | gmhhashmi@gmail.com (product owner), who instructed this sign-off |
+| Date | 2026-09-14 |
+| Result | **Accepted**, with E4 superseded and §G still open |
+
+### How this was verified, on the day it was signed
+
+Recorded in this much detail because the section above already admits the criteria were written
+after the work. A signature on a document like that is worth exactly what the checking behind it
+was worth, so here is the checking.
+
+**The whole suite, green.** 226 unit and 246 integration tests, 0 failures, 0 skips, against a
+real SQL Server rather than an in-memory provider.
+
+**Every test this document names by name still exists.** The criteria point at specific classes
+and specific test methods, and a criterion pointing at a deleted test passes by being unverifiable.
+All were enumerated from the built assemblies and found: `SearchFilterEndpointTests` (4),
+`SourceAdministrationTests` (7), `MySourcesTests` (7), `PricingAndDetailTests` (6),
+`VehicleSyncServiceTests` (9), `CanonicalIdentityTests` (12), `DuplicateDetectionTests` (16),
+`CustomerTests` (13), `CustomerMatchingTests` (5), `CustomerNoteTests` (10),
+`AuthorizationTests` (12), `VehicleImportTests` (12), `CustomerImportTests` (12),
+`CsvReaderTests` (15), `PhoneNumberTests` (21), `MessageComposerTests` (10),
+`RequirementAlertTests` (7), `MessagingTests` (11) — along with each individually named method,
+including `A_rejected_pair_does_not_come_back_tomorrow`,
+`Vehicles_owned_by_different_tenants_are_never_paired`,
+`Someone_already_on_the_books_is_skipped_not_overwritten` and
+`Editing_a_note_keeps_when_it_was_written_and_says_it_changed`.
+
+**A4 by hand, which is the one this document says no test can do.** Against the live 499-vehicle
+database, a requirement was saved with eight filters at once — make Toyota, model Aqua, years
+2016 to 2021, mileage 30,000 to 110,000, hybrid, budget to 2,500 — and its match list compared
+against the same eight typed into the vehicle search. Both returned the same three cars
+(2016/97,320/533.33, 2017/64,455/933.33, 2020/63,153/1,733.33). This is the check that catches a
+requirement field the UI never sends, which looks like a working match list made of wrong cars.
+
+**C6 in its own words.** A requirement carrying a destination and a variant reported
+`variant G` alongside `destination PK (recorded, not filtered)` — the criterion is that a stored
+but unapplied filter says so rather than appearing to have worked, and it does.
+
+**What was not re-verified today.** The live browser checks listed in the section above were done
+when this document was written and were taken on that record rather than repeated: A2, A5, B4,
+B6, C1, C7, C8, D2, E1, F5. Each is a rendering claim with a passing test behind the data it
+renders. Anything whose behaviour has changed since — E4 — is recorded above rather than left to
+be discovered.
+
+**What signing this does not do.** §G stays open: [O4](05-open-items.md#o4--pii-redaction-before-ai-calls)
+was since answered for Phase 2's first two features by
+[D20](02-decisions.md#d20--a-customers-message-is-redacted-before-it-leaves-and-never-stored),
+but G4 — WhatsApp Business API approval — has still not been applied for, and four of Phase 2's
+seven features need it. Nothing here accepts §X as built; it accepts §X as the agreed list of
+what is not.
 
 ### Evidence available at the time of writing
 
-Suite: **124 unit + 204 integration**, 0 failures, 0 skips, against a real SQL Server.
+Suite at the time of drafting: **124 unit + 204 integration**, 0 failures, 0 skips, against a real
+SQL Server. At sign-off it was 226 + 246; the growth is Phase 1 follow-ups and Phase 2 feature 1.
 
 Verified live in a browser against a running instance rather than by reading code: A1–A5, A8,
 B3–B7, C1, C5–C8, D2, E1, E4, F5. The duplicate detection in §B was measured against the real

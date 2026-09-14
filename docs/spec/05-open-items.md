@@ -12,7 +12,7 @@ needs a named owner and a date — an item with neither is not tracked, it is fo
 | [O1](#o1--media-redistribution-rights) | Media redistribution rights | Legal | Phase 1 media | _unassigned_ | _unset_ |
 | ~~O2~~ | ~~Carapis licensing gate~~ | Legal | — | **Closed** | Not using Carapis, see [O2](#o2--carapis-licensing-gate) |
 | [O3](#o3--pii-and-data-protection) | PII and data protection | Legal/Eng | Production | _unassigned_ | _unset_ |
-| [O4](#o4--pii-redaction-before-ai-calls) | PII redaction before AI calls | Eng | Phase 2 | _unassigned_ | _unset_ |
+| ~~O4~~ | ~~PII redaction before AI calls~~ | Eng | — | **Closed** | [D20](02-decisions.md#d20--a-customers-message-is-redacted-before-it-leaves-and-never-stored) |
 | [O5](#o5--billing-metering-and-quotas) | Billing, metering and quotas | Product/Eng | Commercial launch | _unassigned_ | _unset_ |
 | [O6](#o6--observability-and-alerting) | Observability and alerting | Eng | Production | _unassigned_ | _unset_ |
 | [O7](#o7--whatsapp-24-hour-messaging-window) | WhatsApp 24-hour window | Eng | Phase 1 messaging | _unassigned_ | _unset_ |
@@ -140,6 +140,15 @@ retain.
 **Decision needed:** redact before sending, rely on a zero-retention provider agreement, or both.
 Note that `AIRequests.InputMetadataJson` may itself capture PII — it needs the same treatment as
 the payload.
+
+**Closed 2026-09-14 by [D20](02-decisions.md#d20--a-customers-message-is-redacted-before-it-leaves-and-never-stored).**
+The owner chose to redact rather than rely on a provider agreement. `Redaction` strips emails,
+chat links, national identity numbers, phone numbers and the customer's own name before the call;
+`ExtractionRequest` has no constructor that accepts unredacted text, so the step cannot be skipped
+by forgetting it. The `InputMetadataJson` half of this item is answered too — for an extraction
+that column holds `{"characters": n, "redactedItems": n}` and no content at all, not even the
+redacted message. What redaction does **not** catch is recorded in D20's costs rather than
+implied to be nothing.
 
 ## O5 — Billing, metering and quotas
 
