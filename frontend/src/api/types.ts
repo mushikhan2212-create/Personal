@@ -585,3 +585,32 @@ export interface RequirementRanking {
   providerConfigured: boolean;
   items: RankedVehicle[];
 }
+
+// --- Reading a message into a requirement (Phase 2, feature 2) -----------------------------
+
+/**
+ * One thing a customer's message stated, and the words it was read from.
+ *
+ * `evidence` is the point of the whole feature rather than a nicety. A figure alone cannot be
+ * told apart from an invented one; a figure with the words behind it can be, by a person glancing
+ * at the message. The backend refuses any field whose evidence is not in the message, and this is
+ * the half a human checks.
+ */
+export interface ExtractedField {
+  /** A requirement field name — `maxPrice`, `minYear`, and so on. */
+  field: string;
+  /** Already converted to the unit the field stores: "35 lakh" arrives as "3500000". */
+  value: string;
+  /** Copied from the message, character for character. */
+  evidence: string;
+}
+
+export interface RequirementReading {
+  /** How many identifiers were stripped before anything was sent. Shown, not implied. */
+  redacted: number;
+  /** Why there is nothing, when there is nothing. */
+  notice: string | null;
+  /** False until a key is configured, which is what the screen explains. */
+  providerConfigured: boolean;
+  fields: ExtractedField[];
+}

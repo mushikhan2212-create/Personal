@@ -5,11 +5,11 @@ import {
 } from 'antd';
 import {
   addCustomerNote, addRequirement, deleteCustomer, deleteCustomerNote, deleteRequirement,
-  editCustomerNote, getCustomer, getMatches, rankRequirement, updateCustomer,
+  editCustomerNote, getCustomer, getMatches, rankRequirement, readRequirement, updateCustomer,
 } from '../api/client';
 import type {
-  CustomerDetail, CustomerInput, CustomerNote, Requirement, RequirementInput, RequirementMatches,
-  RequirementRanking,
+  CustomerDetail, CustomerInput, CustomerNote, ExtractedField, Requirement, RequirementInput,
+  RequirementMatches, RequirementRanking,
 } from '../api/types';
 import { VehicleCards } from '../components/VehicleCards';
 import { WhatsAppButton } from '../components/WhatsAppButton';
@@ -17,6 +17,50 @@ import { WhatsAppDrawer } from '../components/WhatsAppDrawer';
 import { PencilGlyph, PlusGlyph, TrashGlyph } from '../components/icons';
 import { CustomerFields } from '../components/CustomerFields';
 import { formatUtc, specLabel } from '../format';
+
+/**
+ * How a read value reaches a form control, where one exists for it.
+ *
+ * A field missing from here is one the form has no home for — a variant, a body type, the
+ * currency a budget was quoted in. Those are still shown in the summary, because "35 lakh, and
+ * they said rupees" is something the operator needs to know even though nothing can store it:
+ * a budget filters on the converted base price, and converting at a guessed rate is exactly what
+ * the catalogue refuses to do (D6).
+ *
+ * A gearbox or fuel the Select does not offer is dropped for the same reason. Forcing "CVT" into
+ * a control whose options are Automatic and Manual shows a blank box, which reads as the model
+ * having found nothing rather than as the form being too narrow.
+ */
+const FORM_VALUE: Record<string, (raw: string) => unknown> = {
+  make: (v) => v,
+  model: (v) => v,
+  minYear: Number,
+  maxYear: Number,
+  maxMileage: Number,
+  minPrice: Number,
+  maxPrice: Number,
+  destinationCountryCode: (v) => v.toUpperCase().slice(0, 2),
+  fuelType: (v) => (['Petrol', 'Diesel', 'Hybrid', 'Electric'].includes(v) ? v : undefined),
+  transmission: (v) => (['Automatic', 'Manual'].includes(v) ? v : undefined),
+};
+
+/** What each read field is called on screen, matching the form's own labels. */
+const FIELD_LABEL: Record<string, string> = {
+  make: 'Make',
+  model: 'Model',
+  variant: 'Variant',
+  bodyType: 'Body',
+  minYear: 'Year from',
+  maxYear: 'Year to',
+  minMileage: 'Min mileage',
+  maxMileage: 'Max mileage',
+  transmission: 'Gearbox',
+  fuelType: 'Fuel',
+  minPrice: 'Budget from',
+  maxPrice: 'Budget to',
+  priceCurrency: 'Budget currency',
+  destinationCountryCode: 'Destination',
+};
 
 interface Props {
   publicId: string;
@@ -54,6 +98,14 @@ export function CustomerDetailPage({
   const [saving, setSaving] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  // Reading a pasted message into the form above. Kept beside the drawer's own state because
+  // its whole life is that drawer: opening a fresh one clears all of it.
+  const [pasted, setPasted] = useState('');
+  const [reading, setReading] = useState(false);
+  const [readFields, setReadFields] = useState<ExtractedField[] | null>(null);
+  const [readNotice, setReadNotice] = useState<string | null>(null);
+  const [redactedCount, setRedactedCount] = useState(0);
+
   const [form] = Form.useForm<RequirementInput>();
   const [editForm] = Form.useForm<CustomerInput>();
 
@@ -128,12 +180,62 @@ export function CustomerDetailPage({
     }
   };
 
+  /**
+   * Fills the form from what the customer wrote.
+   *
+   * Sets only the fields the reading actually returned, so a second read after a manual
+   * correction cannot quietly undo it. A value the form has no home for - a currency, or a
+   * gearbox the Select does not offer - is reported in the summary and left for the operator
+   * rather than forced into a control that would show it wrongly.
+   */
+  const readIt = async (): Promise<void> => {
+    setReading(true);
+    setReadFields(null);
+    setReadNotice(null);
+
+    try {
+      const result = await readRequirement(publicId, pasted);
+
+      setReadNotice(result.notice);
+      setRedactedCount(result.redacted);
+      setReadFields(result.fields);
+
+      const patch: Record<string, unknown> = {};
+
+      for (const f of result.fields) {
+        const value = FORM_VALUE[f.field]?.(f.value);
+
+        if (value !== undefined) patch[f.field] = value;
+      }
+
+      form.setFieldsValue(patch);
+    } catch (e) {
+      if (e instanceof Error) setReadNotice(e.message);
+    } finally {
+      setReading(false);
+    }
+  };
+
+  /** Everything the paste box accumulated, forgotten. */
+  const clearReading = (): void => {
+    setPasted('');
+    setReadFields(null);
+    setReadNotice(null);
+    setRedactedCount(0);
+  };
+
+  const closeDrawer = (): void => {
+    setDrawerOpen(false);
+    clearReading();
+  };
+
   const addOne = async (): Promise<void> => {
     setSaving(true);
 
     try {
       await addRequirement(publicId, await form.validateFields());
       setDrawerOpen(false);
+      clearReading();
       form.resetFields();
       await load();
       void message.success('Requirement added.');
@@ -361,15 +463,89 @@ export function CustomerDetailPage({
       <Drawer
         title="What are they looking for?"
         open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        width={380}
+        onClose={closeDrawer}
+        width={420}
         footer={
           <Flex gap={8} justify="flex-end">
-            <Button onClick={() => setDrawerOpen(false)}>Cancel</Button>
+            <Button onClick={closeDrawer}>Cancel</Button>
             <Button type="primary" loading={saving} onClick={() => void addOne()}>Save</Button>
           </Flex>
         }
       >
+        {canRank && (
+          <Card size="small" style={{ marginBottom: 20 }}>
+            <Typography.Text strong>Paste what they sent</Typography.Text>
+
+            <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 4 }}>
+              Their name, phone number, email and ID number are removed before anything is sent,
+              and the message itself is never stored. It fills the form below for you to check.
+            </Typography.Paragraph>
+
+            <Input.TextArea
+              rows={4}
+              value={pasted}
+              maxLength={4000}
+              showCount
+              onChange={(e) => setPasted(e.target.value)}
+              placeholder="Corolla Axio chahiye 2017 ya newer, under 35 lakh, mileage 100,000 se kam"
+            />
+
+            {/* Cleared of the character counter, which showCount draws under the box's right
+                edge and which the button sat on top of. */}
+            <Flex justify="flex-end" style={{ marginTop: 22 }}>
+              <Button
+                loading={reading}
+                disabled={pasted.trim().length === 0}
+                onClick={() => void readIt()}
+              >
+                Read it
+              </Button>
+            </Flex>
+
+            {readNotice !== null && (
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginTop: 12 }}
+                message="Nothing was filled in"
+                description={readNotice}
+              />
+            )}
+
+            {readFields !== null && readFields.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {redactedCount === 0
+                    ? 'Nothing needed removing. Check each line against the message:'
+                    : `${redactedCount} personal ${redactedCount === 1 ? 'detail' : 'details'} `
+                      + 'removed before sending. Check each line against the message:'}
+                </Typography.Text>
+
+                {/*
+                  The words beside each figure, not just the figure. This is the check: a budget
+                  the customer never named cannot show a quotation, and the server has already
+                  refused any field whose evidence is not in the message.
+                */}
+                <Space direction="vertical" size={2} style={{ marginTop: 8, width: '100%' }}>
+                  {readFields.map((f) => (
+                    <Typography.Text key={f.field} style={{ fontSize: 12 }}>
+                      <strong>{FIELD_LABEL[f.field] ?? f.field}</strong>
+                      {' '}
+                      {f.value}
+                      {FORM_VALUE[f.field] === undefined && (
+                        <Tag color="default" style={{ marginLeft: 6, fontSize: 11 }}>
+                          not stored
+                        </Tag>
+                      )}
+                      <Typography.Text type="secondary"> — “{f.evidence}”</Typography.Text>
+                    </Typography.Text>
+                  ))}
+                </Space>
+              </div>
+            )}
+          </Card>
+        )}
+
         <Form form={form} layout="vertical">
           <Form.Item name="name" label="Call it" help="How you refer to it: “Hiace for the shop”.">
             <Input />

@@ -3,7 +3,7 @@ import type {
   CustomerDetail, CustomerImportResult, CustomerInput, CustomerListResponse, CustomerStatus,
   ImportResult, LoginResponse, MySource, RequirementInput, RequirementMatches, SyncResult,
   VehicleDetail, VehicleSearchResponse, VehicleSearchSort, VehicleSourceSummary,
-  DuplicateQueue, MergeRecord, MessageTemplateList, RequirementRanking,
+  DuplicateQueue, MergeRecord, MessageTemplateList, RequirementRanking, RequirementReading,
 } from './types';
 
 /**
@@ -537,3 +537,20 @@ export const editCustomerNote = (
 
 export const deleteCustomerNote = (publicId: string, noteId: number): Promise<unknown> =>
   request(`/customers/${publicId}/notes/${noteId}`, { method: 'DELETE' });
+
+/**
+ * Reads a customer's message into the requirement it states.
+ *
+ * Reads, never saves: what comes back fills the form for the operator to check, and the
+ * requirement is created through `addRequirement` as it always was.
+ *
+ * The message is redacted before it leaves the server — names, phone numbers, emails and
+ * identity numbers — and is never stored. See decision D20.
+ */
+export const readRequirement = (
+  customerPublicId: string, message: string,
+): Promise<RequirementReading> =>
+  request<RequirementReading>(
+    `/customers/${customerPublicId}/requirements/read`,
+    { method: 'POST', body: JSON.stringify({ message }) },
+  );
