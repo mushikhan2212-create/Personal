@@ -151,6 +151,7 @@ public static class DependencyInjection
 
         services.AddHttpClient("ai-ranking");
         services.AddScoped<RecommendationService>();
+        services.AddScoped<ExtractionService>();
 
         var provider = configuration[$"{AIOptions.SectionName}:Provider"];
         var apiKey = configuration[$"{AIOptions.SectionName}:ApiKey"];

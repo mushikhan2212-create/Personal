@@ -39,4 +39,19 @@ public interface IAIProvider
     /// checks that it did not rather than trusting it.
     /// </remarks>
     Task<AIRankingResult> RankAsync(RankingRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Reads a customer's message and returns the requirement it states.
+    /// </summary>
+    /// <remarks>
+    /// Reads, never decides. What comes back is a proposal an operator reviews and saves; nothing
+    /// here writes to a requirement. <see cref="ExtractionGuards"/> checks the answer against the
+    /// message before anybody sees it, because a constraint the customer never stated is far more
+    /// durable than a bad ranking - it becomes part of their record.
+    ///
+    /// The request carries redacted text by construction: see <see cref="ExtractionRequest"/>,
+    /// which cannot be built from a raw string.
+    /// </remarks>
+    Task<AIExtractionResult> ExtractAsync(
+        ExtractionRequest request, CancellationToken ct = default);
 }

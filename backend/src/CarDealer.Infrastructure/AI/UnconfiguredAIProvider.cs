@@ -23,4 +23,11 @@ public sealed class UnconfiguredAIProvider : IAIProvider
     public Task<AIRankingResult> RankAsync(RankingRequest request, CancellationToken ct = default)
         => Task.FromResult(AIRankingResult.Failed(
             "No AI provider is configured. Set an API key to enable ranking.", Name));
+
+    public Task<AIExtractionResult> ExtractAsync(
+        ExtractionRequest request, CancellationToken ct = default)
+        => Task.FromResult(AIExtractionResult.Failed(
+            "No AI provider is configured. Set an API key to read messages, or type the "
+            + "requirement in yourself.",
+            Name));
 }

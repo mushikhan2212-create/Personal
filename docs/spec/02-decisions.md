@@ -32,6 +32,7 @@ Schema consequences are in [`04-schema-delta.md`](04-schema-delta.md).
 | [D17](#d17--top-level-route-identifiers-are-guids-nested-ones-may-be-integers) | Top-level route identifiers are GUIDs; nested ones may be integers | Accepted |
 | [D18](#d18--the-ai-ranks-it-never-selects-and-guards-decide-whether-to-believe-it) | The AI ranks, it never selects, and guards decide whether to believe it | Accepted |
 | [D19](#d19--a-preference-the-broker-states-is-code-not-a-sentence-in-the-prompt) | A preference the broker states is code, not a sentence in the prompt | Accepted |
+| [D20](#d20--a-customers-message-is-redacted-before-it-leaves-and-never-stored) | A customer's message is redacted before it leaves, and never stored | Accepted |
 
 ---
 
@@ -1082,3 +1083,79 @@ newest year accepted is the most desirable end of that range, not the worst.
 **The model's answer and the shown order can differ.** `AIRequests.OutputMetadataJson` keeps what
 the provider said; `VehicleRecommendations` keeps what a salesperson saw. Two records rather than
 one, which is what makes the reordering auditable instead of invisible.
+
+---
+
+## D20 — A customer's message is redacted before it leaves, and never stored
+
+**Status:** Accepted · **Phase:** 2, feature 2
+
+### Problem
+
+Reading a customer's enquiry into a structured requirement is the feature that turns a WhatsApp
+message into CRM data. It is also the first feature whose **input is the customer themselves**.
+
+The ranking feature dodged
+[O4](05-open-items.md#o4--pii-redaction-before-ai-calls) structurally: `RequirementBrief` has no
+field for a name, a phone number or free text, so the question never arose. Extraction cannot
+dodge it the same way, because the words are the input. A real enquiry carries a name, a mobile
+number, a city, an email and often a CNIC, and it would go to a third-party provider in the
+United States.
+
+### Decision
+
+The product owner chose: **send it redacted, and never store it.**
+
+Two mechanisms, both structural rather than procedural:
+
+**1. `Redaction` removes identifiers before the call.** Emails, chat links, CNICs in both
+spellings, phone numbers in the forms this trade writes them, bare digit runs too long to be a
+price or a mileage, and the customer's own name — taken from their record, because a name cannot
+be found by pattern but can be looked up. Each becomes a typed placeholder (`[phone]`, `[name]`),
+not a gap, so the model can see that something was removed rather than reading across it.
+
+**2. `ExtractionRequest` cannot be built from a raw string.** Its constructor is private and the
+only way in takes a `RedactedText`. A caller cannot skip the cleaning by forgetting a step,
+because there is no overload that would let them.
+
+**Nothing persists the message.** The audit row records how long it was and how many identifiers
+came out — `{"characters": 312, "redactedItems": 5}` — and none of its content, not even the
+redacted form. `AIRequests.InputHash` holds a hash, which distinguishes a repeated paste from a
+new one without keeping a word.
+
+**Nothing writes to a requirement.** The endpoint returns a proposal; the operator reads it and
+saves through the ordinary requirements endpoint.
+
+### Why
+
+The same argument as [D19](#d19--a-preference-the-broker-states-is-code-not-a-sentence-in-the-prompt),
+applied to a promise instead of a preference. A rule enforced by a habit is a rule that lasts
+until somebody is in a hurry; a rule enforced by a type is one the compiler keeps. The value of
+`RequirementBrief` was never that somebody remembered not to fill in a name — it was that there
+was no name to fill in.
+
+Not writing to the requirement matters more here than the ranking's equivalent. A bad ranking is
+visible on the screen it appears on and gone by tomorrow. A budget the customer never stated
+becomes part of their record, and every search, alert and shortlist afterwards quietly answers
+the wrong question — with nobody ever re-reading the message to find out why.
+
+### Cost accepted
+
+**Redaction reduces exposure; it does not eliminate it.** A pattern catches a number written as
+digits and cannot catch one written as words, an address, or "my brother Asif's shop on Mall
+Road". The owner accepted this explicitly when choosing it over sending raw text. It is stated in
+`Redaction`'s own remarks so that whoever edits that file knows what it was ever claimed to do.
+
+**It sometimes takes too much.** A customer named Mehran asking after a Mehran loses both to
+`[name]`. Over-redaction costs a field the operator retypes; under-redaction is the failure the
+whole thing exists to prevent, so ambiguous cases go the safe way.
+
+**Evidence, not grounding, is what catches invention.** The guards cannot check a figure against
+the message, because the honest answer converts units — "35 lakh" is 3,500,000 and neither string
+contains the other. So the model returns the words it read each field from, and the guard looks
+for *those* in the message. It is also what the operator reads: a budget with nothing quoted
+beside it is a budget to distrust.
+
+**A provider still sees the shape of a conversation.** Redacted text is still somebody's message,
+and length, phrasing and subject remain. This decision covers identifiers, not the fact that an
+enquiry was made. If that becomes unacceptable, the answer is a local model, not a better regex.

@@ -70,32 +70,107 @@ public sealed class OpenAiCompatibleRankingProvider : IAIProvider
                 "No key or endpoint is configured for an OpenAI-compatible provider.", Name);
         }
 
+        var call = await CallAsync(
+                RankingPrompt.System,
+                RankingPrompt.User(request),
+                "vehicle_ranking",
+                RankingPrompt.Schema,
+                ct)
+            .ConfigureAwait(false);
+
+        if (call.Failure is not null)
+        {
+            return AIRankingResult.Failed(call.Failure, Name, _options.Model);
+        }
+
+        var ranked = RankingResponse.Parse(call.Content, out var failure);
+
+        return new AIRankingResult
+        {
+            Ranked = ranked,
+            Failure = ranked is null ? failure : null,
+            Usage = call.Usage,
+            Provider = Name,
+            Model = _options.Model,
+        };
+    }
+
+    public async Task<AIExtractionResult> ExtractAsync(
+        ExtractionRequest request, CancellationToken ct = default)
+    {
+        if (!IsConfigured)
+        {
+            return AIExtractionResult.Failed(
+                "No key or endpoint is configured for an OpenAI-compatible provider.", Name);
+        }
+
+        var call = await CallAsync(
+                ExtractionPrompt.System,
+                ExtractionPrompt.User(request),
+                "customer_requirement",
+                ExtractionPrompt.Schema,
+                ct)
+            .ConfigureAwait(false);
+
+        if (call.Failure is not null)
+        {
+            return AIExtractionResult.Failed(call.Failure, Name, _options.Model);
+        }
+
+        var fields = ExtractionResponse.Parse(call.Content, out var failure);
+
+        return new AIExtractionResult
+        {
+            Fields = fields,
+            Failure = fields is null ? failure : null,
+            Usage = call.Usage,
+            Provider = Name,
+            Model = _options.Model,
+        };
+    }
+
+    /// <summary>What one chat-completions call came back with.</summary>
+    private sealed record Call(string? Content, AIUsage? Usage, string? Failure);
+
+    /// <summary>
+    /// One structured-output call, whatever it is asking for.
+    /// </summary>
+    /// <remarks>
+    /// Shared between ranking and extraction because the transport is genuinely the same - a
+    /// model, a ceiling, two messages and a schema - and the differences that matter are all in
+    /// the prompt. Two copies would drift in exactly the places that are hardest to notice: a
+    /// header, a timeout, or the rate-limit handling fixed on one side only.
+    /// </remarks>
+    private async Task<Call> CallAsync(
+        string system, string user, string schemaName, JsonElement schema, CancellationToken ct)
+    {
         using var http = _factory.CreateClient("ai-ranking");
         http.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds);
-        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiKey);
+        http.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", _options.ApiKey);
 
         var body = new
         {
             model = _options.Model,
             max_tokens = _options.MaxTokens,
 
-            // Deterministic-leaning. A ranking that reorders itself between identical calls is
-            // not something a salesperson can refer back to, and creativity is not what is
-            // being asked for here.
+            // Deterministic-leaning. An answer that changes between identical calls is not
+            // something anybody can refer back to, and creativity is not what is being asked
+            // for in either of these tasks.
             temperature = 0,
             messages = new object[]
             {
-                new { role = "system", content = RankingPrompt.System },
-                new { role = "user", content = RankingPrompt.User(request) },
+                new { role = "system", content = system },
+                new { role = "user", content = user },
             },
             response_format = new
             {
                 type = "json_schema",
                 json_schema = new
                 {
-                    name = "vehicle_ranking",
+                    name = schemaName,
                     strict = true,
-                    schema = RankingPrompt.Schema,
+                    schema,
                 },
             },
         };
@@ -111,20 +186,17 @@ public sealed class OpenAiCompatibleRankingProvider : IAIProvider
             // The body is included because these endpoints put the useful part there - an
             // unknown model id or a decommissioned one both arrive as a 400 whose status alone
             // says nothing. The rate limit is the exception: see ProviderErrors.
-            return AIRankingResult.Failed(
+            return new Call(
+                null,
+                null,
                 response.StatusCode == HttpStatusCode.TooManyRequests
                     ? ProviderErrors.RateLimit(Name, detail)
-                    : $"{Name} returned {(int)response.StatusCode}: {Shorten(detail)}",
-                Name,
-                _options.Model);
+                    : $"{Name} returned {(int)response.StatusCode}: {Shorten(detail)}");
         }
 
         var completion = await response.Content
             .ReadFromJsonAsync<ChatCompletion>(ct)
             .ConfigureAwait(false);
-
-        var text = completion?.Choices?.FirstOrDefault()?.Message?.Content;
-        var ranked = RankingResponse.Parse(text, out var failure);
 
         var usage = completion?.Usage is null
             ? null
@@ -134,24 +206,7 @@ public sealed class OpenAiCompatibleRankingProvider : IAIProvider
                 OutputTokens = completion.Usage.CompletionTokens,
             };
 
-        if (ranked is null)
-        {
-            return new AIRankingResult
-            {
-                Failure = failure,
-                Usage = usage,
-                Provider = Name,
-                Model = _options.Model,
-            };
-        }
-
-        return new AIRankingResult
-        {
-            Ranked = ranked,
-            Usage = usage,
-            Provider = Name,
-            Model = _options.Model,
-        };
+        return new Call(completion?.Choices?.FirstOrDefault()?.Message?.Content, usage, null);
     }
 
     private static string Shorten(string text)

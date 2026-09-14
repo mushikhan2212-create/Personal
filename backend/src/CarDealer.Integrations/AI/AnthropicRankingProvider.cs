@@ -44,6 +44,79 @@ public sealed class AnthropicRankingProvider : IAIProvider
             return AIRankingResult.Failed("No Anthropic key is configured.", Name);
         }
 
+        var call = await CallAsync(
+                RankingPrompt.System,
+                RankingPrompt.User(request),
+                RankingPrompt.SchemaMembers(),
+                ct)
+            .ConfigureAwait(false);
+
+        if (call.Failure is not null)
+        {
+            return AIRankingResult.Failed(call.Failure, Name, _options.Model);
+        }
+
+        var ranked = RankingResponse.Parse(call.Content, out var failure);
+
+        return new AIRankingResult
+        {
+            Ranked = ranked,
+            Failure = ranked is null ? failure : null,
+            Usage = call.Usage,
+            Provider = Name,
+            Model = _options.Model,
+        };
+    }
+
+    public async Task<AIExtractionResult> ExtractAsync(
+        ExtractionRequest request, CancellationToken ct = default)
+    {
+        if (!IsConfigured)
+        {
+            return AIExtractionResult.Failed("No Anthropic key is configured.", Name);
+        }
+
+        var call = await CallAsync(
+                ExtractionPrompt.System,
+                ExtractionPrompt.User(request),
+                ExtractionPrompt.SchemaMembers(),
+                ct)
+            .ConfigureAwait(false);
+
+        if (call.Failure is not null)
+        {
+            return AIExtractionResult.Failed(call.Failure, Name, _options.Model);
+        }
+
+        var fields = ExtractionResponse.Parse(call.Content, out var failure);
+
+        return new AIExtractionResult
+        {
+            Fields = fields,
+            Failure = fields is null ? failure : null,
+            Usage = call.Usage,
+            Provider = Name,
+            Model = _options.Model,
+        };
+    }
+
+    /// <summary>What one message call came back with.</summary>
+    private sealed record Call(string? Content, AIUsage? Usage, string? Failure);
+
+    /// <summary>
+    /// One schema-constrained message, whatever it is asking for.
+    /// </summary>
+    /// <remarks>
+    /// Shared between ranking and extraction: the differences that matter are in the prompt and
+    /// the schema, and two copies of the transport would drift in the places hardest to notice -
+    /// the timeout, or the refusal check fixed on one side only.
+    /// </remarks>
+    private async Task<Call> CallAsync(
+        string system,
+        string user,
+        Dictionary<string, System.Text.Json.JsonElement> schema,
+        CancellationToken ct)
+    {
         AnthropicClient client = new() { ApiKey = _options.ApiKey };
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -57,62 +130,45 @@ public sealed class AnthropicRankingProvider : IAIProvider
                 MaxTokens = _options.MaxTokens,
 
                 // The standing instructions, kept out of the user turn so they stay identical
-                // between calls. No cache breakpoint: this prompt is well below the minimum
-                // cacheable prefix, so marking it would imply a saving that does not happen.
-                System = new List<TextBlockParam> { new() { Text = RankingPrompt.System } },
+                // between calls. No cache breakpoint: these prompts are well below the minimum
+                // cacheable prefix, so marking one would imply a saving that does not happen.
+                System = new List<TextBlockParam> { new() { Text = system } },
 
                 Messages =
                 [
-                    new() { Role = Role.User, Content = RankingPrompt.User(request) },
+                    new() { Role = Role.User, Content = user },
                 ],
 
                 // A schema rather than a request for JSON. Asking politely for JSON and parsing
-                // whatever comes back is how a ranking arrives wrapped in an apology.
+                // whatever comes back is how an answer arrives wrapped in an apology.
                 OutputConfig = new OutputConfig
                 {
-                    Format = new JsonOutputFormat { Schema = RankingPrompt.SchemaMembers() },
+                    Format = new JsonOutputFormat { Schema = schema },
                 },
             },
             cancellationToken: timeout.Token).ConfigureAwait(false);
 
         // Checked before the content is read. A refusal is an HTTP 200 whose content is not the
-        // answer, so reading it first would parse an explanation as a ranking.
+        // answer, so reading it first would parse an explanation as a result.
         if (response.StopReason == "refusal")
         {
-            return AIRankingResult.Failed(
-                $"The model declined the request ({response.StopDetails?.Category ?? "no category"}).",
-                Name,
-                _options.Model);
+            return new Call(
+                null,
+                null,
+                "The model declined the request "
+                + $"({response.StopDetails?.Category ?? "no category"}).");
         }
 
         var text = string.Concat(
             response.Content.Select(b => b.Value).OfType<TextBlock>().Select(t => t.Text));
 
-        var ranked = RankingResponse.Parse(text, out var failure);
-
-        var usage = new AIUsage
-        {
-            InputTokens = (int)response.Usage.InputTokens,
-            OutputTokens = (int)response.Usage.OutputTokens,
-        };
-
-        if (ranked is null)
-        {
-            return new AIRankingResult
+        return new Call(
+            text,
+            new AIUsage
             {
-                Failure = failure,
-                Usage = usage,
-                Provider = Name,
-                Model = _options.Model,
-            };
-        }
-
-        return new AIRankingResult
-        {
-            Ranked = ranked,
-            Usage = usage,
-            Provider = Name,
-            Model = _options.Model,
-        };
+                InputTokens = (int)response.Usage.InputTokens,
+                OutputTokens = (int)response.Usage.OutputTokens,
+            },
+            null);
     }
 }

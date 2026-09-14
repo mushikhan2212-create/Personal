@@ -37,10 +37,27 @@ internal sealed class ScriptedAIProvider : IAIProvider
 
     public int Calls { get; private set; }
 
+    public Func<ExtractionRequest, AIExtractionResult> Extraction { get; set; } =
+        _ => AIExtractionResult.Failed("nothing scripted");
+
+    public int ExtractionCalls { get; private set; }
+
+    /// <summary>The message as the provider saw it, for asserting on what actually left.</summary>
+    public ExtractionRequest? LastExtraction { get; private set; }
+
     public Task<AIRankingResult> RankAsync(RankingRequest request, CancellationToken ct = default)
     {
         Calls++;
         return Task.FromResult(Answer(request));
+    }
+
+    public Task<AIExtractionResult> ExtractAsync(
+        ExtractionRequest request, CancellationToken ct = default)
+    {
+        ExtractionCalls++;
+        LastExtraction = request;
+
+        return Task.FromResult(Extraction(request));
     }
 }
 

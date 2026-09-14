@@ -734,6 +734,75 @@ public sealed class CustomersController : ControllerBase
     /// notice saying why - which is exactly what the matches screen shows today.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Reads a customer's message into the requirement it states.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Reads, never saves. What comes back is a proposal with the words each field was read
+    /// from, for the operator to check and then create through the ordinary requirements
+    /// endpoint. Nothing here writes to a requirement, because a mis-read budget should cost ten
+    /// seconds rather than sit in a customer's record where nobody re-checks it.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>The message is redacted before it leaves and is never stored.</b> Names, phone
+    /// numbers, emails and identity numbers are replaced with placeholders first; the audit row
+    /// keeps how long the message was and how much was removed, and none of its content. That is
+    /// the product owner's decision on
+    /// [O4](../../../docs/spec/05-open-items.md), and it is structural rather than procedural -
+    /// <c>ExtractionRequest</c> cannot be constructed from an unredacted string.
+    /// </para>
+    ///
+    /// <para>
+    /// A POST because it spends money with a third party. It is <c>customers.manage</c> rather
+    /// than the AI permission because the output is a draft requirement for this customer, and
+    /// anybody who may not edit their requirements has no use for one.
+    /// </para>
+    /// </remarks>
+    [HttpPost("{publicId:guid}/requirements/read")]
+    [HasPermission(Permissions.AiRecommend)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ReadRequirement(
+        Guid publicId,
+        [FromBody] ReadRequirementRequest request,
+        [FromServices] ExtractionService extraction,
+        CancellationToken ct = default)
+    {
+        var customer = await _db.Customers
+            .FirstOrDefaultAsync(c => c.PublicId == publicId, ct)
+            .ConfigureAwait(false);
+
+        if (customer is null)
+        {
+            return NotFound(new { message = "That customer does not exist." });
+        }
+
+        var outcome = await extraction.ReadAsync(request.Message, customer, ct)
+            .ConfigureAwait(false);
+
+        return Ok(new
+        {
+            // Said plainly so the screen can show it. "4 details removed before sending" is a
+            // claim the operator can check against the message in front of them.
+            outcome.Redacted,
+            outcome.Notice,
+            providerConfigured = extraction.ProviderConfigured,
+
+            Fields = outcome.Fields.Select(f => new
+            {
+                f.Field,
+                f.Value,
+
+                // The words behind each figure. The operator reads these, not the numbers -
+                // a budget with nothing quoted beside it is a budget to distrust.
+                f.Evidence,
+            }).ToList(),
+        });
+    }
+
     [HttpPost("{publicId:guid}/requirements/{requirementId:long}/rank")]
     [HasPermission(Permissions.AiRecommend)]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -916,6 +985,18 @@ public sealed record CustomerRequest
     public LeadSource? LeadSource { get; init; }
     public long? AssignedUserId { get; init; }
     public string? Notes { get; init; }
+}
+
+/// <summary>A customer's own message, pasted in for reading.</summary>
+/// <remarks>
+/// One field, and it goes no further than <c>ExtractionService</c> in this form: the service
+/// redacts it before anything else touches it, and nothing persists it. Kept as its own type
+/// rather than a bare string parameter so the shape is visible in the API surface, and so adding
+/// a second field here is a decision somebody makes rather than a parameter somebody appends.
+/// </remarks>
+public sealed record ReadRequirementRequest
+{
+    public string? Message { get; init; }
 }
 
 public sealed record RequirementRequest
