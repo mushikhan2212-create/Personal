@@ -74,6 +74,57 @@ public sealed class AIOptionsTests
     }
 
     [Fact]
+    public void One_model_serves_both_operations_unless_told_otherwise()
+    {
+        // The ordinary case, and the one that must not need configuring.
+        var options = new AIOptions { Model = "openai/gpt-oss-120b" };
+
+        Assert.Equal("openai/gpt-oss-120b", options.ModelForRanking);
+        Assert.Equal("openai/gpt-oss-120b", options.ModelForExtraction);
+    }
+
+    [Fact]
+    public void A_named_model_takes_over_its_own_operation_only()
+    {
+        // Why this exists: the best model for ranking on this account cannot extract at all, so
+        // one setting for both meant accepting a worse answer on one side.
+        var options = new AIOptions
+        {
+            Model = "openai/gpt-oss-120b",
+            RankingModel = "qwen/qwen3.8-27b",
+        };
+
+        Assert.Equal("qwen/qwen3.8-27b", options.ModelForRanking);
+        Assert.Equal("openai/gpt-oss-120b", options.ModelForExtraction);
+    }
+
+    [Fact]
+    public void Both_can_be_named_and_neither_falls_back()
+    {
+        var options = new AIOptions
+        {
+            Model = "unused",
+            RankingModel = "qwen/qwen3.8-27b",
+            ExtractionModel = "openai/gpt-oss-120b",
+        };
+
+        Assert.Equal("qwen/qwen3.8-27b", options.ModelForRanking);
+        Assert.Equal("openai/gpt-oss-120b", options.ModelForExtraction);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Blank_is_not_a_model_and_falls_back(string named)
+    {
+        // A variable set to nothing - which is what an unset compose passthrough produces - has
+        // to mean "not specified" rather than "use the empty model".
+        var options = new AIOptions { Model = "openai/gpt-oss-120b", RankingModel = named };
+
+        Assert.Equal("openai/gpt-oss-120b", options.ModelForRanking);
+    }
+
+    [Fact]
     public void A_quoted_provider_name_still_selects_its_adapter()
     {
         // The reason Provider is cleaned too. Registration compares this against "anthropic",

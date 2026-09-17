@@ -156,6 +156,8 @@ public static class DependencyInjection
             {
                 options.Provider = AIOptions.Clean(options.Provider);
                 options.Model = AIOptions.Clean(options.Model);
+                options.RankingModel = AIOptions.Clean(options.RankingModel);
+                options.ExtractionModel = AIOptions.Clean(options.ExtractionModel);
                 options.ApiKey = AIOptions.Clean(options.ApiKey);
                 options.BaseUrl = AIOptions.Clean(options.BaseUrl);
             });

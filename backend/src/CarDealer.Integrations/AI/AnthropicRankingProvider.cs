@@ -44,7 +44,10 @@ public sealed class AnthropicRankingProvider : IAIProvider
             return AIRankingResult.Failed("No Anthropic key is configured.", Name);
         }
 
+        var model = _options.ModelForRanking;
+
         var call = await CallAsync(
+                model,
                 RankingPrompt.System,
                 RankingPrompt.User(request),
                 RankingPrompt.SchemaMembers(),
@@ -53,7 +56,7 @@ public sealed class AnthropicRankingProvider : IAIProvider
 
         if (call.Failure is not null)
         {
-            return AIRankingResult.Failed(call.Failure, Name, _options.Model);
+            return AIRankingResult.Failed(call.Failure, Name, model);
         }
 
         var ranked = RankingResponse.Parse(call.Content, out var failure);
@@ -64,7 +67,7 @@ public sealed class AnthropicRankingProvider : IAIProvider
             Failure = ranked is null ? failure : null,
             Usage = call.Usage,
             Provider = Name,
-            Model = _options.Model,
+            Model = model,
         };
     }
 
@@ -76,7 +79,10 @@ public sealed class AnthropicRankingProvider : IAIProvider
             return AIExtractionResult.Failed("No Anthropic key is configured.", Name);
         }
 
+        var model = _options.ModelForExtraction;
+
         var call = await CallAsync(
+                model,
                 ExtractionPrompt.System,
                 ExtractionPrompt.User(request),
                 ExtractionPrompt.SchemaMembers(),
@@ -85,7 +91,7 @@ public sealed class AnthropicRankingProvider : IAIProvider
 
         if (call.Failure is not null)
         {
-            return AIExtractionResult.Failed(call.Failure, Name, _options.Model);
+            return AIExtractionResult.Failed(call.Failure, Name, model);
         }
 
         var fields = ExtractionResponse.Parse(call.Content, out var failure);
@@ -96,7 +102,7 @@ public sealed class AnthropicRankingProvider : IAIProvider
             Failure = fields is null ? failure : null,
             Usage = call.Usage,
             Provider = Name,
-            Model = _options.Model,
+            Model = model,
         };
     }
 
@@ -112,6 +118,7 @@ public sealed class AnthropicRankingProvider : IAIProvider
     /// the timeout, or the refusal check fixed on one side only.
     /// </remarks>
     private async Task<Call> CallAsync(
+        string model,
         string system,
         string user,
         Dictionary<string, System.Text.Json.JsonElement> schema,
@@ -125,7 +132,7 @@ public sealed class AnthropicRankingProvider : IAIProvider
         var response = await client.Messages.Create(
             new MessageCreateParams
             {
-                Model = _options.Model,
+                Model = model,
 
                 MaxTokens = _options.MaxTokens,
 

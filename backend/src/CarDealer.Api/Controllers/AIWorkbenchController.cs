@@ -75,9 +75,12 @@ public sealed class AIWorkbenchController : ControllerBase
         var options = new AIOptions
         {
             Provider = _options.Provider,
+            // Set as the plain Model with both overrides cleared, so a named model is the one
+            // that runs. Leaving ExtractionModel set would have the workbench quietly ignore the
+            // model it was asked to try, which is the one thing it exists not to do.
             Model = AIOptions.Clean(request.Model) is { Length: > 0 } named
                 ? named
-                : _options.Model,
+                : _options.ModelForExtraction,
             ApiKey = _options.ApiKey,
             BaseUrl = _options.BaseUrl,
             TimeoutSeconds = _options.TimeoutSeconds,

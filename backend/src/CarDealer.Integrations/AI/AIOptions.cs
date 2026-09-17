@@ -32,6 +32,38 @@ public sealed class AIOptions
     /// </remarks>
     public string Model { get; set; } = string.Empty;
 
+    /// <summary>
+    /// A model for ranking, when the best one differs from the best one for reading messages.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Empty means use <see cref="Model"/>, which is the ordinary case. It exists because the
+    /// two operations turned out to want different models, and one setting for both meant
+    /// accepting a worse answer on one of them.
+    /// </para>
+    ///
+    /// <para>
+    /// Measured on this account: <c>qwen/qwen3.8-27b</c> writes the best ranking reasons of the
+    /// models tried - specific and non-repeating, where a larger one opened all five entries
+    /// with the same filler - and cannot produce a valid extraction at all.
+    /// <c>openai/gpt-oss-120b</c> extracts cleanly. Forcing either to do both costs quality on
+    /// one side, and the owner's instruction is that quality wins.
+    /// </para>
+    /// </remarks>
+    public string RankingModel { get; set; } = string.Empty;
+
+    /// <summary>A model for reading customer messages. Empty means use <see cref="Model"/>.</summary>
+    public string ExtractionModel { get; set; } = string.Empty;
+
+    /// <summary>The model a ranking call should use.</summary>
+    public string ModelForRanking => Specific(RankingModel);
+
+    /// <summary>The model an extraction call should use.</summary>
+    public string ModelForExtraction => Specific(ExtractionModel);
+
+    private string Specific(string named)
+        => string.IsNullOrWhiteSpace(named) ? Model : named;
+
     public string ApiKey { get; set; } = string.Empty;
 
     /// <summary>Overrides the provider's default endpoint. Required for OpenAI-compatible hosts.</summary>

@@ -69,6 +69,11 @@ services:
       # says so on screen, and gives no hint that the key was set correctly in the wrong place.
       AI__Provider: "${AI__Provider:-}"
       AI__Model: "${AI__Model:-}"
+
+      # Optional, and only for when the best model for one operation is not the best for the
+      # other. Empty means AI__Model serves both.
+      AI__RankingModel: "${AI__RankingModel:-}"
+      AI__ExtractionModel: "${AI__ExtractionModel:-}"
       AI__ApiKey: "${AI__ApiKey:-}"
       AI__BaseUrl: "${AI__BaseUrl:-}"
       AI__MaxCandidates: "${AI__MaxCandidates:-20}"

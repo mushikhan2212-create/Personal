@@ -238,6 +238,35 @@ cannot do extraction at all. The configuration holds one model for both, so the 
 the harder job wins — and if that ever costs too much on ranking, splitting the setting is the
 change to make rather than accepting a model that fails half the time.
 
+### One model, or one per operation
+
+The two operations do not want the same model, so the configuration does not force them to share
+one:
+
+```
+AI__Model=openai/gpt-oss-120b      # the default for both
+AI__RankingModel=qwen/qwen3.8-27b  # optional, overrides it for ranking only
+AI__ExtractionModel=              # optional, overrides it for reading messages only
+```
+
+Leave both overrides empty and `AI__Model` serves everything, which is the ordinary case. Name one
+and it takes over that operation alone.
+
+It exists because on this account the best model for each job is a different model:
+`qwen/qwen3.8-27b` writes the best ranking reasons of the three tried — specific and
+non-repeating, where the larger one opened all five entries with the same filler — and cannot
+produce a valid extraction at all. Forcing either to do both costs quality on one side.
+
+The startup line names both when they differ, so a split configuration is never something you
+have to remember:
+
+```
+AI provider groq, ranking with qwen/qwen3.8-27b, reading with openai/gpt-oss-120b, key ...
+```
+
+The audit row records the model that **actually ran**, taken from the answer rather than from
+configuration, so `AIRequests` stays honest about which one produced what.
+
 ### What decides it
 
 **Structured output support is the whole game.** The adapter sends
@@ -327,6 +356,10 @@ So, in order:
 3. Watch `AIRequests` for a week. Both failures land there as `Failed`, and `FailureReason` says
    which.
 
+**These numbers are a free-tier workaround, not a recommendation.** On a paid tier none of this
+arithmetic applies and both settings should go back up — the defaults in code (8,000 and 20) are
+the production-shaped ones, and this section exists only because 1,000 tokens a minute is not.
+
 For `qwen/qwen3.8-27b` at roughly 83 output tokens per car, against a 1,000 OTPM limit:
 
 ```
@@ -335,7 +368,13 @@ AI__MaxCandidates=8
 ```
 
 900 is under the limit, so the refusal cannot fire; eight cars need about 660, so the answer fits
-inside 900 with room to spare.
+inside 900 with room to spare. **Raise both the day the tier changes** — a 900-token ceiling is a
+truncation risk on a long answer, which is a quality cost being paid for a billing constraint.
+
+`AI__MaxCandidates` has a second, non-cost ceiling worth keeping: the code clamps it at 40
+regardless, because past a screenful nobody is reading the ordering and the extra cars are tokens
+spent on rows nobody looks at. Twenty is a sensible production value for reasons that have
+nothing to do with price.
 
 For `openai/gpt-oss-20b` at roughly 190, the same 900 buys four cars. **The model you choose
 decides how long your shortlist can be** — which is the argument for the cheap one that happens to

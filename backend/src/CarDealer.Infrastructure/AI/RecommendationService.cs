@@ -189,6 +189,12 @@ public sealed class RecommendationService
         }
 
         audit.CompletedAtUtc = _clock.UtcNow;
+
+        // Corrected from the answer rather than trusted from configuration. Ranking and reading
+        // can be pointed at different models, so the one named before the call is only a guess
+        // at which of them ran.
+        audit.Model = result.Model ?? audit.Model;
+
         audit.Cost = result.Usage?.CostUsd;
         audit.TokenUsageJson = result.Usage is null ? null : JsonSerializer.Serialize(result.Usage);
 

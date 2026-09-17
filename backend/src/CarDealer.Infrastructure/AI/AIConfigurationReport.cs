@@ -87,7 +87,14 @@ public static class AIConfigurationReport
                 + $"key {Fingerprint(options.ApiKey)}. All three are needed.";
         }
 
-        return $"AI provider {options.Provider}, model {options.Model}, "
+        // Both named when they differ, because a split configuration is exactly the one a
+        // reader would otherwise misremember - and "why is extraction using that model" is a
+        // question the startup line should already have answered.
+        var models = options.ModelForRanking == options.ModelForExtraction
+            ? $"model {options.Model}"
+            : $"ranking with {options.ModelForRanking}, reading with {options.ModelForExtraction}";
+
+        return $"AI provider {options.Provider}, {models}, "
             + $"key {Fingerprint(options.ApiKey)} from [{SourceOf(configuration, "AI:ApiKey")}], "
             + $"max tokens {options.MaxTokens}, candidates {options.MaxCandidates}.";
     }

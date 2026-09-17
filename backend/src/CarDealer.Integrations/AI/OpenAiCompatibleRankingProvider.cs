@@ -70,7 +70,10 @@ public sealed class OpenAiCompatibleRankingProvider : IAIProvider
                 "No key or endpoint is configured for an OpenAI-compatible provider.", Name);
         }
 
+        var model = _options.ModelForRanking;
+
         var call = await CallAsync(
+                model,
                 RankingPrompt.System,
                 RankingPrompt.User(request),
                 "vehicle_ranking",
@@ -80,7 +83,7 @@ public sealed class OpenAiCompatibleRankingProvider : IAIProvider
 
         if (call.Failure is not null)
         {
-            return AIRankingResult.Failed(call.Failure, Name, _options.Model);
+            return AIRankingResult.Failed(call.Failure, Name, model);
         }
 
         var ranked = RankingResponse.Parse(call.Content, out var failure);
@@ -91,7 +94,7 @@ public sealed class OpenAiCompatibleRankingProvider : IAIProvider
             Failure = ranked is null ? failure : null,
             Usage = call.Usage,
             Provider = Name,
-            Model = _options.Model,
+            Model = model,
         };
     }
 
@@ -104,7 +107,10 @@ public sealed class OpenAiCompatibleRankingProvider : IAIProvider
                 "No key or endpoint is configured for an OpenAI-compatible provider.", Name);
         }
 
+        var model = _options.ModelForExtraction;
+
         var call = await CallAsync(
+                model,
                 ExtractionPrompt.System,
                 ExtractionPrompt.User(request),
                 "customer_requirement",
@@ -114,7 +120,7 @@ public sealed class OpenAiCompatibleRankingProvider : IAIProvider
 
         if (call.Failure is not null)
         {
-            return AIExtractionResult.Failed(call.Failure, Name, _options.Model);
+            return AIExtractionResult.Failed(call.Failure, Name, model);
         }
 
         var fields = ExtractionResponse.Parse(call.Content, out var failure);
@@ -125,7 +131,7 @@ public sealed class OpenAiCompatibleRankingProvider : IAIProvider
             Failure = fields is null ? failure : null,
             Usage = call.Usage,
             Provider = Name,
-            Model = _options.Model,
+            Model = model,
         };
     }
 
@@ -142,7 +148,12 @@ public sealed class OpenAiCompatibleRankingProvider : IAIProvider
     /// header, a timeout, or the rate-limit handling fixed on one side only.
     /// </remarks>
     private async Task<Call> CallAsync(
-        string system, string user, string schemaName, JsonElement schema, CancellationToken ct)
+        string model,
+        string system,
+        string user,
+        string schemaName,
+        JsonElement schema,
+        CancellationToken ct)
     {
         using var http = _factory.CreateClient("ai-ranking");
         http.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds);
@@ -151,7 +162,7 @@ public sealed class OpenAiCompatibleRankingProvider : IAIProvider
 
         var body = new
         {
-            model = _options.Model,
+            model,
             max_tokens = _options.MaxTokens,
 
             // Deterministic-leaning. An answer that changes between identical calls is not
@@ -197,7 +208,7 @@ public sealed class OpenAiCompatibleRankingProvider : IAIProvider
                     // corporate proxy refusing the host answers with one, and its body names
                     // the host it blocked, which is the whole diagnosis. Paraphrasing that as
                     // "check your key" would send somebody looking in the wrong place.
-                    HttpStatusCode.Unauthorized => ProviderErrors.Unauthorized(Name, _options.Model),
+                    HttpStatusCode.Unauthorized => ProviderErrors.Unauthorized(Name, model),
                     _ => $"{Name} returned {(int)response.StatusCode}: {Shorten(detail)}",
                 });
         }
