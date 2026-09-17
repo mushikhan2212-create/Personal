@@ -147,14 +147,27 @@ public static class DependencyInjection
     private static void AddAI(IServiceCollection services, IConfiguration configuration)
     {
         services.AddOptions<AIOptions>()
-            .Bind(configuration.GetSection(AIOptions.SectionName));
+            .Bind(configuration.GetSection(AIOptions.SectionName))
+
+            // Whitespace and quotation marks stripped after binding rather than trusted away.
+            // See AIOptions.Clean: a .env written on Windows leaves a carriage return on every
+            // value, and the provider reports that as an invalid key.
+            .PostConfigure(options =>
+            {
+                options.Provider = AIOptions.Clean(options.Provider);
+                options.Model = AIOptions.Clean(options.Model);
+                options.ApiKey = AIOptions.Clean(options.ApiKey);
+                options.BaseUrl = AIOptions.Clean(options.BaseUrl);
+            });
 
         services.AddHttpClient("ai-ranking");
         services.AddScoped<RecommendationService>();
         services.AddScoped<ExtractionService>();
 
-        var provider = configuration[$"{AIOptions.SectionName}:Provider"];
-        var apiKey = configuration[$"{AIOptions.SectionName}:ApiKey"];
+        // Cleaned the same way the bound options are, or a quoted "anthropic" would silently
+        // select the OpenAI-shaped adapter by failing an equality check further down.
+        var provider = AIOptions.Clean(configuration[$"{AIOptions.SectionName}:Provider"]);
+        var apiKey = AIOptions.Clean(configuration[$"{AIOptions.SectionName}:ApiKey"]);
 
         if (string.IsNullOrWhiteSpace(provider) || string.IsNullOrWhiteSpace(apiKey))
         {

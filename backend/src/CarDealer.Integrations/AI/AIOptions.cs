@@ -77,4 +77,40 @@ public sealed class AIOptions
         !string.IsNullOrWhiteSpace(Provider)
         && !string.IsNullOrWhiteSpace(ApiKey)
         && !string.IsNullOrWhiteSpace(Model);
+
+    /// <summary>
+    /// Strips what a configuration file leaves around a value.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Three ways to write a perfectly correct key and have the provider reject it, none of them
+    /// visible by looking at the file:
+    /// </para>
+    ///
+    /// <list type="bullet">
+    /// <item>a <c>.env</c> saved on Windows ends every line with a carriage return, which docker
+    /// compose carries into the value;</item>
+    /// <item><c>AI__ApiKey="gsk_..."</c> keeps its quotation marks, because a <c>.env</c> file is
+    /// not shell syntax;</item>
+    /// <item>a trailing space survives a copy and paste.</item>
+    /// </list>
+    ///
+    /// <para>
+    /// All three arrive as a 401 saying the key is invalid, which sends somebody looking at their
+    /// account rather than at their whitespace. No credential, model id or URL has meaningful
+    /// space or quotes around it, so removing them cannot discard anything real.
+    /// </para>
+    /// </remarks>
+    public static string Clean(string? value)
+    {
+        var trimmed = (value ?? string.Empty).Trim();
+
+        // One matched pair only. A key that genuinely began and ended with a quote would be
+        // extraordinary, and stripping repeatedly could eat a real character.
+        return trimmed.Length >= 2
+            && ((trimmed[0] == '"' && trimmed[^1] == '"')
+                || (trimmed[0] == '\'' && trimmed[^1] == '\''))
+            ? trimmed[1..^1].Trim()
+            : trimmed;
+    }
 }

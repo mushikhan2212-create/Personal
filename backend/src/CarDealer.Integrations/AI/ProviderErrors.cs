@@ -49,6 +49,26 @@ public static partial class ProviderErrors
             + $"{limit:N0}, send fewer cars with AI__MaxCandidates, or raise the account's tier.";
     }
 
+    /// <summary>
+    /// A rejected credential, with the things actually worth checking.
+    /// </summary>
+    /// <remarks>
+    /// Special-cased alongside the rate limit because the raw body says only "Invalid API Key",
+    /// which sends somebody to their provider account when the cause is usually closer to hand.
+    /// The malformed-value family - a carriage return from a Windows <c>.env</c>, quotation marks
+    /// kept because a <c>.env</c> is not shell syntax, a pasted trailing space - is handled by
+    /// <c>AIOptions.Clean</c> before the request is built, so what remains is genuinely about
+    /// which key is configured and where it came from.
+    /// </remarks>
+    public static string Unauthorized(string provider, string? model)
+        => $"{provider} rejected the key"
+            + (string.IsNullOrWhiteSpace(model) ? string.Empty : $" for model {model}")
+            + ". Check that the key configured is the whole key, that it belongs to the account "
+            + "you expect, and that it has not been revoked. If the API is started with "
+            + "docker compose it reads backend/.env; with dotnet run it does not, and reads "
+            + "exported variables or user secrets instead - a key in the file the other one uses "
+            + "looks exactly like this.";
+
     private static int? Figure(Regex pattern, string text)
     {
         var match = pattern.Match(text);

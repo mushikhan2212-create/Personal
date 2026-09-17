@@ -64,4 +64,23 @@ public sealed class ProviderErrorTests
     {
         Assert.StartsWith("anthropic", ProviderErrors.RateLimit("anthropic", Real));
     }
+
+    [Fact]
+    public void A_rejected_key_says_where_to_look()
+    {
+        // "Invalid API Key" is all the provider says, and it sends people to their account when
+        // the cause is usually which file the key is in.
+        var message = ProviderErrors.Unauthorized("groq", "qwen/qwen3.8-27b");
+
+        Assert.Contains("rejected the key", message);
+        Assert.Contains("qwen/qwen3.8-27b", message);
+        Assert.Contains("backend/.env", message);
+        Assert.Contains("user secrets", message);
+    }
+
+    [Fact]
+    public void A_rejected_key_with_no_model_still_reads()
+    {
+        Assert.DoesNotContain("for model", ProviderErrors.Unauthorized("groq", null));
+    }
 }

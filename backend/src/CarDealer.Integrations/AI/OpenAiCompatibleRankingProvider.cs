@@ -189,9 +189,17 @@ public sealed class OpenAiCompatibleRankingProvider : IAIProvider
             return new Call(
                 null,
                 null,
-                response.StatusCode == HttpStatusCode.TooManyRequests
-                    ? ProviderErrors.RateLimit(Name, detail)
-                    : $"{Name} returned {(int)response.StatusCode}: {Shorten(detail)}");
+                response.StatusCode switch
+                {
+                    HttpStatusCode.TooManyRequests => ProviderErrors.RateLimit(Name, detail),
+
+                    // 401 only. A 403 on this path is usually not the provider at all - a
+                    // corporate proxy refusing the host answers with one, and its body names
+                    // the host it blocked, which is the whole diagnosis. Paraphrasing that as
+                    // "check your key" would send somebody looking in the wrong place.
+                    HttpStatusCode.Unauthorized => ProviderErrors.Unauthorized(Name, _options.Model),
+                    _ => $"{Name} returned {(int)response.StatusCode}: {Shorten(detail)}",
+                });
         }
 
         var completion = await response.Content
