@@ -125,6 +125,50 @@ AI__ApiKey=<your key>
 **There is deliberately no default model.** Lineups change faster than this code will, and a
 stale default that silently resolves to a retired model is worse than being told to name one.
 
+## Trying a message against a model
+
+Tuning a prompt through the customer screen is a slow loop: edit configuration, restart, open a
+customer, paste, read a one-line notice. There is a faster one, in Development only:
+
+```
+POST  http://localhost:5246/api/v1/ai/read-message
+Headers:  Authorization: Bearer <token>
+          Content-Type: application/json
+```
+
+```json
+{
+  "message": "Asalam o alaikum, main Imran Sheikh hun, mera number 0300-1234567. Corolla Axio chahiye 2017 ya newer, under 35 lakh.",
+  "model": "openai/gpt-oss-20b",
+  "names": ["Imran", "Sheikh"]
+}
+```
+
+`model` overrides the configured one for that call alone — which is the point, since comparing
+two models otherwise means two restarts. `names` stands in for the customer record the real
+endpoint reads them from. Both are optional.
+
+What comes back is everything that happened:
+
+| Field | What it tells you |
+| --- | --- |
+| `sentToProvider` | the exact bytes the model received, after redaction |
+| `redactedItems` | how many identifiers came out |
+| `fields` | what the model answered, **before** any guard touched it |
+| `rejection` | which guard refused it, or null |
+| `failure` | why there was no answer at all — a rate limit, a rejected key |
+| `usage`, `elapsedMs` | what it cost and how long it took |
+
+`fields` being populated while `rejection` is non-null is the interesting case: it shows what the
+model produced *and* why it was not believed, which is the pair you cannot see anywhere else.
+
+**It writes nothing** — no requirement, no customer, no audit row. That is what makes varying the
+model safe here: nothing downstream inherits a choice made for one experiment.
+
+**It does not exist outside Development**, where a caller-supplied model id would let anybody
+with the permission spend the account's money on a model nobody chose. It answers 404 there
+rather than 403, because the honest answer to "is this deployed" is no.
+
 ## Choosing a model
 
 Don't pick one from a datasheet. The only thing that decides it is whether a model can do *this*
