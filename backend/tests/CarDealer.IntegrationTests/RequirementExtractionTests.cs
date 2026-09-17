@@ -231,6 +231,11 @@ public sealed class RequirementExtractionTests : IClassFixture<ApiFactory>
             .FirstAsync();
 
         Assert.Equal(AIRequestStatus.Rejected, audit.Status);
+
+        // And the answer that was refused is kept. A rejection names the rule that broke; only
+        // the response says what the model actually produced, and the first real failure in the
+        // field was a value of "}, {" that nothing had recorded.
+        Assert.Contains("1500000", audit.OutputMetadataJson);
     }
 
     [Fact]

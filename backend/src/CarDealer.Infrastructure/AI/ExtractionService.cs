@@ -180,6 +180,16 @@ public sealed class ExtractionService
             // paying for it, and this operation is the one where a bad answer costs most.
             audit.Status = AIRequestStatus.Rejected;
             audit.FailureReason = Trim(rejection);
+
+            // The answer itself, kept precisely because it was refused. A rejection says which
+            // rule broke; only the response says what the model actually produced, and without
+            // it a report of "maxPrice came back as }, {" cannot be investigated at all - the
+            // one case where the evidence is discarded is the one where it is needed.
+            //
+            // Safe to store for the same reason the accepted answer is: the model saw only
+            // redacted text, so nothing it echoes can carry an identifier.
+            audit.OutputMetadataJson = Trim(JsonSerializer.Serialize(result.Fields));
+
             await _db.SaveChangesAsync(ct).ConfigureAwait(false);
 
             _logger.LogWarning(

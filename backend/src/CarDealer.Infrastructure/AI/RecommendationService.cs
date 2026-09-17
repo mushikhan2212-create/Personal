@@ -210,6 +210,11 @@ public sealed class RecommendationService
             // paying for it.
             audit.Status = AIRequestStatus.Rejected;
             audit.FailureReason = Trim(rejection);
+
+            // Kept for the same reason the extraction keeps its refused answers: the rejection
+            // names the rule that broke, and only the response says what the model did.
+            audit.OutputMetadataJson = Trim(JsonSerializer.Serialize(result.Ranked));
+
             await _db.SaveChangesAsync(ct).ConfigureAwait(false);
 
             _logger.LogWarning(
