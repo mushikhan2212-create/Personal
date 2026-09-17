@@ -217,6 +217,27 @@ AI__ApiKey=<key> dotnet run -- --model <id> --model <id> --delay 60
 A 429 is now labelled in the output as a rate limit rather than a failure. Re-probe anything that
 hits one, alone.
 
+### What the models actually did on extraction
+
+Measured through the workbench on the message *"I want a Corolla Axio under 4000 USD"* — the
+easiest possible input, and the one that separated them.
+
+| Model | Result |
+| --- | --- |
+| `openai/gpt-oss-120b` | **4 fields, guards clean, ~1s, 434 output tokens.** Correctly inferred make Toyota from the model name. |
+| `openai/gpt-oss-20b` | 400 from Groq: emitted `{"fields": {"items": [...]}}` — it copied the schema's own `items` keyword into the output instead of instantiating it. |
+| `qwen/qwen3.8-27b` | Answered, but put array punctuation inside a value: `maxPrice` came back as `}, {`. Caught by the guards. |
+
+The two failures are the same thing: a model that cannot reliably produce an *instance* of a
+nested array-of-objects. Groq validated after generation rather than constraining during it, so
+a weak model free-ran and missed. **This is a capability difference, not a prompt or schema
+problem**, which is why the schema has not been reshaped to accommodate it.
+
+Note the split with ranking: `qwen/qwen3.8-27b` is the cheapest usable model *for ranking* and
+cannot do extraction at all. The configuration holds one model for both, so the one that can do
+the harder job wins — and if that ever costs too much on ranking, splitting the setting is the
+change to make rather than accepting a model that fails half the time.
+
 ### What decides it
 
 **Structured output support is the whole game.** The adapter sends

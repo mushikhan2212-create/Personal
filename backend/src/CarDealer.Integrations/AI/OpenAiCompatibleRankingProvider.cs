@@ -217,8 +217,21 @@ public sealed class OpenAiCompatibleRankingProvider : IAIProvider
         return new Call(completion?.Choices?.FirstOrDefault()?.Message?.Content, usage, null);
     }
 
+    /// <summary>
+    /// Keeps a provider's error body readable without keeping all of it.
+    /// </summary>
+    /// <remarks>
+    /// Raised from 400 after that cut the one thing worth having. A schema violation arrives as a
+    /// 400 whose body carries <c>failed_generation</c> - the actual malformed text the model
+    /// produced - and it sits at the end, after the message, the type and the code. Truncating at
+    /// 400 characters reliably removed it, leaving a diagnosis that named a problem and hid the
+    /// evidence for it.
+    ///
+    /// Still bounded, because this reaches a screen and an audit column. Two thousand is enough
+    /// for the opening of a failed generation, which is where the shape of the mistake shows.
+    /// </remarks>
     private static string Shorten(string text)
-        => text.Length <= 400 ? text : text[..400];
+        => text.Length <= 2_000 ? text : text[..2_000];
 
     private sealed record ChatCompletion
     {
