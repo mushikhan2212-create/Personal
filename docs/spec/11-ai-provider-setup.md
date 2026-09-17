@@ -91,8 +91,25 @@ ranks. The worker has its own id and needs none of this.
 **Do not set both this and `backend/.env`.** They feed different ways of starting the API, and
 keeping two copies of a key is how one of them goes stale and costs you an afternoon.
 
-**Check it took.** Rank any requirement and look at the response, or the screen: if
-`providerConfigured` is false, the application never saw the key, whatever the file says.
+**Check it took — the API says so on startup.** One line in the log, every time it boots:
+
+```
+AI provider groq, model qwen/qwen3.8-27b, key gsk_...6789 (43 chars)
+  from [JsonConfigurationProvider for 'secrets.json' (Optional)], max tokens 900, candidates 8.
+```
+
+Read the square brackets first. **That is the source that won**, and it is the answer to almost
+every "but the key is right" — because environment variables are added *after* user secrets, so
+one stray `AI__ApiKey` left from an experiment silently beats the secret being carefully edited.
+Seeing `EnvironmentVariablesConfigurationProvider` when you expect `secrets.json` is the whole
+diagnosis.
+
+The fingerprint is the other half: the first and last four characters and the length, which is
+enough to compare against your provider's console by eye and useless to anybody reading the log.
+A key clipped by a careless paste shows up as a length that is not what it should be.
+
+If the line says the features are off instead, the application never saw a key at all, whatever
+the file says.
 
 For Groq you can leave `AI__BaseUrl` unset — it defaults to `https://api.groq.com/openai/v1`.
 For anything else OpenAI-shaped, set it to that endpoint.

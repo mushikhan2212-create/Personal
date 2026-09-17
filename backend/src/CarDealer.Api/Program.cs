@@ -10,14 +10,17 @@ using CarDealer.Api.Middleware;
 using CarDealer.Api.Services;
 using CarDealer.Application.Abstractions;
 using CarDealer.Infrastructure;
+using CarDealer.Infrastructure.AI;
 using CarDealer.Infrastructure.Auth;
 using CarDealer.Infrastructure.Persistence;
 using CarDealer.Infrastructure.Alerts;
 using CarDealer.Infrastructure.Duplicates;
+using CarDealer.Integrations.AI;
 using Hangfire;
 using Hangfire.SqlServer;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -253,6 +256,15 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 var app = builder.Build();
+
+// Said once, at startup, because "Invalid API Key" is not a diagnosis when two configuration
+// sources can disagree about which key that is - and environment variables silently outrank
+// user secrets. The key itself is never logged; the fingerprint is enough to recognise it.
+app.Logger.LogInformation(
+    "{AIConfiguration}",
+    AIConfigurationReport.Describe(
+        app.Configuration,
+        app.Services.GetRequiredService<IOptions<AIOptions>>().Value));
 
 // ---------------------------------------------------------------------------
 // Pipeline
